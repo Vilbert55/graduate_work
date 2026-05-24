@@ -1,0 +1,86 @@
+networks:
+  test-net:
+    name: movies-net-test
+    driver: bridge
+
+services:
+  movies-redis-test:
+    image: redis:7-alpine
+    container_name: movies-redis-test
+    networks:
+      - test-net
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    ports:
+      - "${REDIS_PUBLISHED_PORT}:6379"
+
+  movies-elasticsearch-test:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.19.9
+    container_name: movies-elasticsearch-test
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - xpack.security.enabled=false
+      - logger.level=ERROR
+    networks:
+      - test-net
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:9200" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    ports:
+      - "${ELASTICSEARCH_PUBLISHED_PORT}:9200"
+
+  movies-films-search-service-test:
+    build:
+      context: ../../films-search-service
+      dockerfile: Dockerfile
+    container_name: movies-films-search-service-test
+    env_file:
+      - .env
+    environment:
+      # Переопределяем хосты для связи внутри Docker-сети (env_file даёт localhost-значения для хоста)
+      - ELASTICSEARCH_HOST=movies-elasticsearch-test
+      - ELASTICSEARCH_PORT=9200
+      - REDIS_HOST=movies-redis-test
+      - REDIS_PORT=6379
+    networks:
+      - test-net
+    depends_on:
+      movies-redis-test:
+        condition: service_healthy
+      movies-elasticsearch-test:
+        condition: service_healthy
+    ports:
+      - "${FASTAPI_PUBLISHED_PORT}:8001"
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8001/films-search/api/health" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  movies-tests-runner:
+    build:
+      context: .                               # контекст = tests/functional
+      dockerfile: Dockerfile.tests
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION:-3.12.13}
+    container_name: movies-tests-runner
+    env_file:
+      - .env
+    networks:
+      - test-net
+    depends_on:
+      movies-films-search-service-test:
+        condition: service_healthy
+    command: >
+      sh -c "pytest -v src --maxfail=1"
+    environment:
+      - PYTHONPATH=/opt/project
+    volumes:
+      - ./:/opt/tests                          # монтируем код для быстрой разработки
+      - ../../:/opt/project                    # корень проекта монтируется в /opt/project

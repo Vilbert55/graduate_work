@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Lint with Ruff
+        uses: chartboost/ruff-action@v1
+        with:
+          args: "check . --exclude migrations,admin-panel-service,alembic,tests,database_research,.venv,__pycache_"
+
+  notifications-tests:
+    needs: lint
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: movies
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12.13"
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install dependencies
+        working-directory: notifications-service
+        run: poetry install --with test
+
+      - name: Run Alembic migrations
+        working-directory: notifications-service
+        env:
+          POSTGRES_PASSWORD: postgres
+          SQL_HOST: localhost
+        run: poetry run alembic upgrade head
+
+      - name: Run permission and functional tests
+        working-directory: notifications-service
+        env:
+          POSTGRES_PASSWORD: postgres
+          SQL_HOST: localhost
+        run: poetry run pytest -v tests/ -m "not integration"
+
+  film-search-tests:
+    needs: lint
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12.12", "3.12.13"]
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Prepare test environment
+        run: cp tests/functional/.env.template.docker tests/functional/.env
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Run tests
+        env:
+          PYTHON_VERSION: ${{ matrix.python-version }}
+        run: |
+          docker compose -f tests/functional/docker-compose.yml up \
+            --abort-on-container-exit \
+            --exit-code-from movies-tests-runner
+
+  notify:
+    needs: [lint, notifications-tests, film-search-tests]  # ждём завершения всех задач
+    runs-on: ubuntu-latest
+    if: always()  # выполняется даже при падении предыдущих этапов
+    steps:
+      - name: Send Telegram notification
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          message: |
+            **CI завершён**
+            - Lint: ${{ needs.lint.result }}
+            - Notifications tests: ${{ needs.notifications-tests.result }}
+            - Film search tests: ${{ needs.film-search-tests.result }}
+            Репозиторий: `${{ github.repository }}`
+            Ветка: `${{ github.ref_name }}`
+            Коммит: `${{ github.sha }}`
+            Сообщение: ${{ github.event.head_commit.message }}
+          format: markdown

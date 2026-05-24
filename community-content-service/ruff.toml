@@ -1,0 +1,47 @@
+preview = true
+line-length = 120
+indent-width = 4
+target-version = "py312"
+
+[lint.isort]
+lines-after-imports = 2
+known-first-party = ["module", "settings",]
+
+[lint.flake8-quotes]
+inline-quotes = "single"
+
+[lint]
+select = ["ALL"]
+ignore = [
+  "CPY",
+  "D",
+  "FA",
+  "TD",
+  "T20",
+  "EM101",
+  "EM102",
+  "ERA001",
+  "PLC0415",
+  "RUF001",
+  "RUF002",
+  "RUF003",
+  "TRY003",
+  "Q000",
+  "DOC501",
+  "RUF012",
+  "ANN002",
+  "ANN003",
+  # Missing type annotation for function argument
+  "ANN001",
+  # Missing return type annotation for public function
+  "ANN201",
+  # Missing return type annotation for private function
+  "ANN202",
+  # Missing return type annotation for special method
+  "ANN204",
+  # `return` is not documented in docstring
+  "DOC201",
+  # `yield` is not documented in docstring
+  "DOC402",
+  "G004"
+]

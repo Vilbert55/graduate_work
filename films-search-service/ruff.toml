@@ -1,0 +1,69 @@
+preview = true
+line-length = 120
+indent-width = 4
+target-version = "py312"
+
+[lint.isort]
+lines-after-imports = 2
+known-first-party = ["module", "settings",]
+
+[lint.flake8-quotes]
+inline-quotes = "single"
+
+[lint]
+# See https://docs.astral.sh/ruff/rules/
+select = ["ALL"]
+ignore = [
+  # flake8-copyright
+  "CPY",
+  # pydocstyle
+  "D",
+  # flake8-future-annotations
+  "FA",
+  # flake8-todos
+  "TD",
+  # flake8-print
+  "T20",
+  # Exception must not use a string literal, assign to variable first
+  "EM101",
+  # Exception must not use an f-string literal, assign to variable first
+  "EM102",
+  # Found commented-out code
+  "ERA001",
+  # `import` should be at the top-level of a file
+  "PLC0415",
+  # String contains ambiguous {}.
+  "RUF001",
+  # Docstring contains ambiguous {}.
+  "RUF002",
+  # Comment contains ambiguous {}.
+  "RUF003",
+  # Avoid specifying long messages outside the exception class
+  "TRY003",
+  # Single quotes found but double quotes preferred
+  "Q000",
+  # Docstring missing exception
+  "DOC501",
+  # Mutable class attributes should be annotated with `typing.ClassVar`
+  "RUF012",
+  # Missing type annotation for `*args`
+  "ANN002",
+  # Missing type annotation for `*kwargs`
+  "ANN003",
+  # Missing type annotation for function argument
+  "ANN001",
+  # Missing return type annotation for public function
+  "ANN201",
+  # Dynamically typed expressions (typing.Any) are disallowed
+  "ANN401",
+  # Missing return type annotation for private function
+  "ANN202",
+  # Missing return type annotation for special method
+  "ANN204",
+  # `return` is not documented in docstring
+  "DOC201",
+  # `yield` is not documented in docstring
+  "DOC402",
+  # Logging statement uses f-string
+  "G004"
+]

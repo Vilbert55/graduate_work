@@ -1,0 +1,692 @@
+networks:
+  net:
+    name: movies-net
+
+services:
+  # Django service (админка)
+  movies-admin-panel-service:
+    build: admin-panel-service
+    container_name: movies-admin-panel-service
+    expose:
+      - "8000"
+    env_file:
+      - .env
+    networks:
+      - net
+    environment:
+      - SQL_HOST=movies-db
+      - DB_PORT=5432
+    depends_on:
+      movies-db:
+        condition: service_healthy
+    volumes:
+      - movies-static_volume:/var/www/static
+      - movies-media_volume:/var/www/media
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health_check/"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # FastAPI сервис поиска фильмов
+  movies-films-search-service:
+    build: films-search-service
+    container_name: movies-films-search-service
+    expose:
+      - "8001"
+    env_file:
+      - .env
+    networks:
+      - net
+    depends_on:
+      movies-redis:
+        condition: service_healthy
+      movies-elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/films-search/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+
+  movies-redis:
+    image: redis:7-alpine
+    container_name: movies-redis
+    networks:
+      - net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  movies-nginx:
+    image: nginx:1.29.4-alpine
+    container_name: movies-nginx
+    networks:
+      - net
+    volumes:
+      - ./configs-nginx:/etc/nginx/conf.d:ro
+      - movies-static_volume:/var/www/static:ro
+      - movies-media_volume:/var/www/media:ro
+    depends_on:
+      movies-admin-panel-service:
+        condition: service_healthy
+      movies-films-search-service:
+        condition: service_healthy
+      movies-activity-tracker-service:
+        condition: service_healthy
+      movies-community-content-service:
+        condition: service_healthy
+    ports:
+      - "80:80"
+
+  movies-db:
+    image: postgres:17.9-alpine
+    container_name: movies-db
+    env_file:
+      - .env
+    networks:
+      - net
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "${EXTERNAL_DB_PORT}:5432"
+    volumes:
+      - movies-postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  movies-elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.19.15
+    container_name: movies-elasticsearch
+    env_file:
+      - .env
+    networks:
+      - net
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - xpack.security.enabled=false
+      - cluster.routing.allocation.same_shard.host=true
+    ports:
+      - "9200:9200"
+    volumes:
+      - movies-elasticsearch_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  movies-films-etl-service:
+    container_name: movies-films-etl-service
+    build: films-etl-service
+    env_file:
+      - .env
+    networks:
+      - net
+    environment:
+      - SQL_HOST=movies-db
+      - DB_PORT=5432
+    command: python run.py
+    restart: always
+    depends_on:
+      movies-elasticsearch:
+        condition: service_healthy
+      movies-db:
+        condition: service_healthy
+    volumes:
+      - ./es_schema_movies.json:/tmp/es_schema_movies.json:ro
+
+  movies-auth-service:
+    build: auth-service
+    container_name: movies-auth-service
+    env_file:
+      - .env
+    networks:
+      - net
+    ports:
+      - "8002:8002"
+    depends_on:
+      movies-db:
+        condition: service_healthy
+      movies-redis:
+        condition: service_healthy
+    environment:
+      - SQL_HOST=movies-db
+      - DB_PORT=5432
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/auth/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 60s
+
+  # FastAPI сервис пользовательского контента (закладки, оценки, рецензии)
+  movies-community-content-service:
+    build: community-content-service
+    container_name: movies-community-content-service
+    expose:
+      - "8004"
+    env_file:
+      - .env
+    networks:
+      - net
+    environment:
+      - SQL_HOST=movies-db
+      - DB_PORT=5432
+    depends_on:
+      movies-db:
+        condition: service_healthy
+      movies-jaeger:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/community-content/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 60s
+
+  movies-jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: movies-jaeger
+    networks:
+      - net
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "16686:16686"                   # UI
+      - "6831:6831/udp"                 # UDP порт для Jaeger Agent
+
+  movies-kafka:
+    image: apache/kafka:4.1.2
+    container_name: movies-kafka
+    networks:
+      - net
+    ports:
+      - "29092:29092"                   # Внешний доступ для отладки
+    environment:
+      - KAFKA_NODE_ID=0
+      - KAFKA_PROCESS_ROLES=controller,broker
+      - KAFKA_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:29092
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://movies-kafka:9092,EXTERNAL://localhost:29092
+      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      - KAFKA_CONTROLLER_QUORUM_VOTERS=0@movies-kafka:9093
+      - KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_AUTO_CREATE_TOPICS_ENABLE=true
+    volumes:
+      - movies-kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  movies-kafka-init:
+    image: apache/kafka:4.1.2
+    container_name: movies-kafka-init
+    networks:
+      - net
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        echo "Waiting for Kafka to be ready..."
+        while ! /opt/kafka/bin/kafka-topics.sh --bootstrap-server movies-kafka:9092 --list &> /dev/null; do
+            sleep 2
+        done
+        echo "Kafka is ready. Creating required topics..."
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server movies-kafka:9092 --create --if-not-exists \
+            --topic views --partitions 1 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server movies-kafka:9092 --create --if-not-exists \
+            --topic clicks --partitions 1 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server movies-kafka:9092 --create --if-not-exists \
+            --topic custom_events --partitions 1 --replication-factor 1
+        echo "Topics creation finished."
+    depends_on:
+      movies-kafka:
+        condition: service_healthy
+
+  movies-kafka-ui:
+    image: provectuslabs/kafka-ui:v0.7.2
+    container_name: movies-kafka-ui
+    networks:
+      - net
+    ports:
+      - "8080:8080"                     # Веб-интерфейс
+    environment:
+      - KAFKA_CLUSTERS_0_NAME=ugc-cluster
+      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=movies-kafka:9092
+    depends_on:
+      movies-kafka:
+        condition: service_healthy
+
+  # RabbitMQ для сервиса нотификаций
+  movies-rabbitmq:
+    image: rabbitmq:4.1-management-alpine
+    container_name: movies-rabbitmq
+    networks:
+      - net
+    ports:
+      - "5672:5672"                     # AMQP (для отладки извне)
+      - "15672:15672"                   # Management UI
+    environment:
+      - RABBITMQ_DEFAULT_USER=${NOTIFICATIONS_RABBIT_USER}
+      - RABBITMQ_DEFAULT_PASS=${NOTIFICATIONS_RABBIT_PASSWORD}
+      - RABBITMQ_DEFAULT_VHOST=${NOTIFICATIONS_RABBIT_VHOST}
+    volumes:
+      - movies-rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # Сервис нотификаций: миграции и SQL-функции
+  movies-notifications-migrations:
+    build: notifications-service
+    container_name: movies-notifications-migrations
+    networks:
+      - net
+    env_file:
+      - .env
+    environment:
+      - SQL_HOST=movies-db
+      - DB_PORT=5432
+      - MIGRATE=1
+    depends_on:
+      movies-db:
+        condition: service_healthy
+    command: ["true"]   # entrypoint выполнит alembic upgrade и завершится
+
+  # Сервис нотификаций: bootstrap топологии RabbitMQ
+  movies-notifications-rabbit-init:
+    build: notifications-service
+    container_name: movies-notifications-rabbit-init
+    networks:
+      - net
+    env_file:
+      - .env
+    environment:
+      - SQL_HOST=movies-db
+      - DB_PORT=5432
+      - MIGRATE=0
+    depends_on:
+      movies-rabbitmq:
+        condition: service_healthy
+    entrypoint: ["python", "-m", "src.workers.bootstrap"]
+
+  # Сервис нотификаций: outbox publisher (БД -> RabbitMQ)
+  movies-notifications-publisher:
+    build: notifications-service
+    container_name: movies-notifications-publisher
+    networks:
+      - net
+    env_file:
+      - .env
+    environment:
+      - SQL_HOST=movies-db
+      - DB_PORT=5432
+      - MIGRATE=0
+    depends_on:
+      movies-db:
+        condition: service_healthy
+      movies-rabbitmq:
+        condition: service_healthy
+      movies-notifications-migrations:
+        condition: service_completed_successfully
+      movies-notifications-rabbit-init:
+        condition: service_completed_successfully
+    command: ["python", "-m", "src.workers.publisher"]
+    restart: unless-stopped
+
+  # Сервис нотификаций: email sender (RabbitMQ consumer -> Mailpit)
+  # Запускаем 2 экземпляра для демонстрации тротлинга через число консюмеров.
+  movies-notifications-email-sender-1:
+    build: notifications-service
+    container_name: movies-notifications-email-sender-1
+    networks:
+      - net
+    env_file:
+      - .env
+    environment:
+      - SQL_HOST=movies-db
+      - DB_PORT=5432
+      - MIGRATE=0
+    depends_on:
+      movies-db:
+        condition: service_healthy
+      movies-rabbitmq:
+        condition: service_healthy
+      movies-mailpit:
+        condition: service_healthy
+      movies-notifications-migrations:
+        condition: service_completed_successfully
+      movies-notifications-rabbit-init:
+        condition: service_completed_successfully
+    command: ["python", "-m", "src.workers.email_sender"]
+    restart: unless-stopped
+
+  movies-notifications-email-sender-2:
+    build: notifications-service
+    container_name: movies-notifications-email-sender-2
+    networks:
+      - net
+    env_file:
+      - .env
+    environment:
+      - SQL_HOST=movies-db
+      - DB_PORT=5432
+      - MIGRATE=0
+    depends_on:
+      movies-db:
+        condition: service_healthy
+      movies-rabbitmq:
+        condition: service_healthy
+      movies-mailpit:
+        condition: service_healthy
+      movies-notifications-migrations:
+        condition: service_completed_successfully
+      movies-notifications-rabbit-init:
+        condition: service_completed_successfully
+    command: ["python", "-m", "src.workers.email_sender"]
+    restart: unless-stopped
+
+  # Сервис нотификаций: scheduler (создание сообщений из заданий)
+  movies-notifications-scheduler:
+    build: notifications-service
+    container_name: movies-notifications-scheduler
+    networks:
+      - net
+    env_file:
+      - .env
+    environment:
+      - SQL_HOST=movies-db
+      - DB_PORT=5432
+      - MIGRATE=0
+    depends_on:
+      movies-db:
+        condition: service_healthy
+      movies-notifications-migrations:
+        condition: service_completed_successfully
+    command: ["python", "-m", "src.workers.scheduler"]
+    restart: unless-stopped
+
+  # Сервис нотификаций: WebSocket gateway (in-app уведомления)
+  movies-notifications-ws-gateway:
+    build: notifications-service
+    container_name: movies-notifications-ws-gateway
+    networks:
+      - net
+    env_file:
+      - .env
+    environment:
+      - SQL_HOST=movies-db
+      - DB_PORT=5432
+      - MIGRATE=0
+    depends_on:
+      movies-db:
+        condition: service_healthy
+      movies-rabbitmq:
+        condition: service_healthy
+      movies-notifications-migrations:
+        condition: service_completed_successfully
+      movies-notifications-rabbit-init:
+        condition: service_completed_successfully
+    ports:
+      - "8005:8005"
+    command: ["uvicorn", "src.workers.ws_gateway:app", "--host", "0.0.0.0", "--port", "8005"]
+    restart: unless-stopped
+
+  # Сервис нотификаций: recovery (возврат застрявших сообщений в pending)
+  movies-notifications-recovery:
+    build: notifications-service
+    container_name: movies-notifications-recovery
+    networks:
+      - net
+    env_file:
+      - .env
+    environment:
+      - SQL_HOST=movies-db
+      - DB_PORT=5432
+      - MIGRATE=0
+    depends_on:
+      movies-db:
+        condition: service_healthy
+      movies-notifications-migrations:
+        condition: service_completed_successfully
+    command: ["python", "-m", "src.workers.recovery"]
+    restart: unless-stopped
+
+  # Mailpit — локальный SMTP-приёмник для отладки писем
+  movies-mailpit:
+    image: axllent/mailpit:v1.27.10
+    container_name: movies-mailpit
+    networks:
+      - net
+    ports:
+      - "1025:1025"  # SMTP
+      - "8025:8025"  # Web UI
+    environment:
+      - MP_MAX_MESSAGES=5000
+      - MP_SMTP_AUTH_ACCEPT_ANY=1
+      - MP_SMTP_AUTH_ALLOW_INSECURE=1
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8025/api/v1/info"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  # UGC: Flask API (сбор пользовательских событий)
+  movies-activity-tracker-service:
+    build: activity-tracker-service
+    container_name: movies-activity-tracker-service
+    expose:
+      - "8003"
+    env_file:
+      - .env
+    networks:
+      - net
+    environment:
+      - UGC_KAFKA_HOST=movies-kafka
+      - UGC_KAFKA_PORT=9092
+    depends_on:
+      movies-kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/ugc/health/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+
+  movies-starrocks:
+    image: starrocks/allin1-ubuntu:4.0.8
+    container_name: movies-starrocks
+    networks:
+      - net
+    ports:
+      - "8030:8030"      # HTTP-интерфейс
+      - "9030:9030"      # MySQL-интерфейс
+    volumes:
+      - movies-starrocks_data:/opt/starrocks/data
+    healthcheck:
+      test: ["CMD", "mysql", "-h", "127.0.0.1", "-P", "9030", "-u", "root", "-e", "SELECT 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    environment:
+      - FE_MAX_HEAP_SIZE=2G
+      - BE_MAX_HEAP_SIZE=2G
+      - FE_MAX_ROUTINE_LOAD_TASK_NUM_PER_BE=3
+
+  movies-starrocks-init:
+    image: mysql:8.0
+    container_name: movies-starrocks-init
+    networks:
+      - net
+    volumes:
+      - ./starrocks_init/init.sql:/init.sql:ro
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        echo "Waiting for StarRocks MySQL port..."
+        until mysql -h movies-starrocks -P 9030 -uroot -e "SELECT 1" &> /dev/null; do
+            sleep 2
+        done
+        echo "MySQL port is open. Waiting for BE to be ready..."
+        # Ждём, пока в SHOW BACKENDS не появится Alive = true
+        until mysql -h movies-starrocks -P 9030 -uroot -e "SHOW BACKENDS\G" 2>/dev/null | grep -q "Alive: true"; do
+            echo "BE not ready yet, waiting..."
+            sleep 5
+        done
+        echo "BE is ready. Executing init.sql..."
+        mysql -h movies-starrocks -P 9030 -uroot < /init.sql
+        echo "Initialization finished."
+    depends_on:
+      movies-starrocks:
+        condition: service_healthy
+
+
+  movies-logstash:
+    image: docker.elastic.co/logstash/logstash:8.19.15
+    container_name: movies-logstash
+    networks:
+      - net
+    volumes:
+      - ./configs-logstash/pipeline:/usr/share/logstash/pipeline:ro
+    environment:
+      - LS_JAVA_OPTS=-Xms256m -Xmx256m
+      - xpack.monitoring.enabled=false
+    depends_on:
+      movies-elasticsearch:
+        condition: service_healthy
+    ports:
+      - "5044:5044"
+
+  movies-kibana:
+    image: docker.elastic.co/kibana/kibana:8.19.15
+    container_name: movies-kibana
+    networks:
+      - net
+    environment:
+      - ELASTICSEARCH_HOSTS=http://movies-elasticsearch:9200
+    depends_on:
+      movies-elasticsearch:
+        condition: service_healthy
+    ports:
+      - "5601:5601"
+
+  movies-filebeat:
+    image: docker.elastic.co/beats/filebeat:8.19.15
+    container_name: movies-filebeat
+    user: root
+    networks:
+      - net
+    volumes:
+      - ./configs-filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: filebeat -e --strict.perms=false
+    depends_on:
+      movies-logstash:
+        condition: service_started
+
+
+  # GlitchTip (Sentry-совместимый self-hosted трекер ошибок)
+  # Заменяет self-hosted sentry, который несовместим с sentry-sdk >= 1.0 (Envelope API)
+  sentry-db-init:
+    image: postgres:17.9-alpine
+    container_name: sentry-db-init
+    networks:
+      - net
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        until pg_isready -h movies-db -U ${POSTGRES_USER}; do sleep 1; done
+        psql -h movies-db -U ${POSTGRES_USER} -tc "SELECT 1 FROM pg_database WHERE datname='glitchtip'" | grep -q 1 || \
+          psql -h movies-db -U ${POSTGRES_USER} -c "CREATE DATABASE glitchtip"
+    depends_on:
+      movies-db:
+        condition: service_healthy
+
+  sentry-migrate:
+    image: glitchtip/glitchtip:6
+    container_name: sentry-migrate
+    networks:
+      - net
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@movies-db/glitchtip
+      REDIS_URL: redis://movies-redis:6379/2
+      SECRET_KEY: ${SENTRY_SECRET_KEY}
+      GLITCHTIP_DOMAIN: http://localhost:9000
+      DEFAULT_FROM_EMAIL: ${SENTRY_ADMIN_EMAIL}
+      EMAIL_URL: consolemail://
+      DJANGO_SUPERUSER_EMAIL: ${SENTRY_ADMIN_EMAIL}
+      DJANGO_SUPERUSER_PASSWORD: ${SENTRY_ADMIN_PASSWORD}
+      DJANGO_SUPERUSER_USERNAME: admin
+    depends_on:
+      sentry-db-init:
+        condition: service_completed_successfully
+      movies-redis:
+        condition: service_healthy
+    command: >
+      sh -c "
+        ./manage.py migrate &&
+        (./manage.py createsuperuser --noinput || true)
+      "
+
+  sentry-api:
+    image: glitchtip/glitchtip:6
+    container_name: sentry-api
+    networks:
+      - net
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@movies-db/glitchtip
+      REDIS_URL: redis://movies-redis:6379/2
+      SECRET_KEY: ${SENTRY_SECRET_KEY}
+      GLITCHTIP_DOMAIN: http://localhost:9000
+      DEFAULT_FROM_EMAIL: ${SENTRY_ADMIN_EMAIL}
+      EMAIL_URL: consolemail://
+      GLITCHTIP_EMBED_WORKER: "true"
+    ports:
+      - "9000:8000"
+    depends_on:
+      sentry-migrate:
+        condition: service_completed_successfully
+
+  sentry-worker:
+    image: glitchtip/glitchtip:6
+    container_name: sentry-worker
+    networks:
+      - net
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@movies-db/glitchtip
+      REDIS_URL: redis://movies-redis:6379/2
+      SECRET_KEY: ${SENTRY_SECRET_KEY}
+      GLITCHTIP_DOMAIN: http://localhost:9000
+      EMAIL_URL: consolemail://
+    command: ./bin/run-worker.sh
+    depends_on:
+      sentry-migrate:
+        condition: service_completed_successfully
+
+volumes:
+  movies-static_volume:
+  movies-media_volume:
+  movies-postgres_data:
+  movies-elasticsearch_data:
+  movies-kafka_data:
+  movies-starrocks_data:
+  movies-rabbitmq_data:

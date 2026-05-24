@@ -1,0 +1,70 @@
+services:
+  postgres:
+    image: postgres:17.9-alpine
+    container_name: postgres
+    hostname: postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ugc
+      POSTGRES_USER: ugc
+      POSTGRES_PASSWORD: ugc
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ugc -d ugc"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - postgres-net
+
+  postgres-loader:
+    build:
+      context: ..
+      dockerfile: postgres_cluster/postgres-loader/Dockerfile
+    container_name: postgres-loader
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - postgres-net
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ugc
+      DB_USER: ugc
+      DB_PASSWORD: ugc
+
+  fastapi:
+    build:
+      context: ../fastapi_service
+    container_name: postgres-fastapi
+    environment:
+      DB_ENGINE: postgres
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ugc
+      DB_USER: ugc
+      DB_PASSWORD: ugc
+    ports:
+      - "8000:8000"
+    networks:
+      - postgres-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  postgres_data:
+
+networks:
+  postgres-net:
+    driver: bridge

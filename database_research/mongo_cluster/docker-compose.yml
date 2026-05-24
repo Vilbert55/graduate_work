@@ -1,0 +1,127 @@
+services:
+  mongo1:
+    image: mongo:8.2.7
+    container_name: mongo1
+    hostname: mongo1
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo1_data:/data/db
+    command:
+      [
+        "mongod",
+        "--replSet", "rs0",
+        "--bind_ip_all",
+        "--wiredTigerCacheSizeGB", "0.5"
+      ]
+    networks:
+      - mongo-cluster
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    mem_limit: 2g
+
+  mongo2:
+    image: mongo:8.2.7
+    container_name: mongo2
+    hostname: mongo2
+    restart: unless-stopped
+    volumes:
+      - mongo2_data:/data/db
+    command:
+      [
+        "mongod",
+        "--replSet", "rs0",
+        "--bind_ip_all",
+        "--wiredTigerCacheSizeGB", "0.5"
+      ]
+    networks:
+      - mongo-cluster
+    mem_limit: 2g
+
+  mongo3:
+    image: mongo:8.2.7
+    container_name: mongo3
+    hostname: mongo3
+    restart: unless-stopped
+    volumes:
+      - mongo3_data:/data/db
+    command:
+      [
+        "mongod",
+        "--replSet", "rs0",
+        "--bind_ip_all",
+        "--wiredTigerCacheSizeGB", "0.5"
+      ]
+    networks:
+      - mongo-cluster
+    mem_limit: 2g
+
+  mongo-init:
+    image: mongo:8.2.7
+    depends_on:
+      mongo1:
+        condition: service_healthy
+    entrypoint: >
+      bash -c "
+        mongosh --host mongo1:27017 --eval \"
+          rs.initiate({
+            _id: 'rs0',
+            members: [
+              { _id: 0, host: 'mongo1:27017', priority: 2 },
+              { _id: 1, host: 'mongo2:27017', priority: 1 },
+              { _id: 2, host: 'mongo3:27017', priority: 1 }
+            ]
+          })
+        \"
+      "
+    networks:
+      - mongo-cluster
+
+  mongo-loader:
+    build:
+      context: ..                      # корень database_research
+      dockerfile: mongo_cluster/mongo-loader/Dockerfile
+    container_name: mongo-loader
+    depends_on:
+      mongo-init:
+        condition: service_completed_successfully
+      mongo1:
+        condition: service_healthy
+    networks:
+      - mongo-cluster
+
+  fastapi:
+    build:
+      context: ../fastapi_service
+    container_name: mongo-fastapi
+    environment:
+      DB_ENGINE: mongo
+      MONGO_URI: "mongodb://mongo1:27017/?replicaSet=rs0&maxPoolSize=10"
+      DB_NAME: ugc
+    ports:
+      - "8000:8000"
+    networks:
+      - mongo-cluster
+    depends_on:
+      mongo-init:
+        condition: service_completed_successfully
+      mongo1:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  mongo1_data:
+  mongo2_data:
+  mongo3_data:
+
+networks:
+  mongo-cluster:
+    driver: bridge

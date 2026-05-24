@@ -1,0 +1,28 @@
+[tool.poetry]
+package-mode = false
+
+[project]
+name = "activity-tracker-service"
+version = "0.1.0"
+description = "UGC API — сервис сбора пользовательских действий"
+authors = [
+    {name = "Савельичев Павел Иванович", email = "savelichev@myservices.digital"}
+]
+requires-python = "==3.12.13"
+dependencies = [
+    "flask (>=3.1.0,<4.0.0)",
+    "kafka-python (>=2.0.3,<3.0.0)",
+    "pydantic (>=2.11.0,<3.0.0)",
+    "pydantic-settings (>=2.8.0,<3.0.0)",
+    "PyJWT (>=2.10.1,<3.0.0)",
+    "gunicorn[gevent] (>=25.3.0,<26.0.0)",
+    "apiflask (>=3.1.0,<4.0.0)",
+    "sentry-sdk[flask] (>=2.0.0,<3.0.0)"
+]
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.group.dev.dependencies]
+ruff = ">=0.14.8,<0.15.0"

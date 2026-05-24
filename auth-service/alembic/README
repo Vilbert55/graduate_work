@@ -1,0 +1,14 @@
+## Автоматическая генерация новых миграций после внесения изменений в модели (src.models.entity)
+
+1. Понднять контейнеры с помощью `docker compose`
+2. Установить и активировать виртуальное окружение python для auth-service локально:
+```
+cd auth-service
+poetry install
+source .venv/bin/activate
+```
+3. Скопировать файл настроек .env в папку auth-service/
+4. Сгенерировать миграции
+```bash
+alembic revision --autogenerate -m "<description>"
+```
