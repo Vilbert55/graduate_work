@@ -1,0 +1,168 @@
+<mxfile host="app.diagrams.net" agent="claude-code" version="24.0.0">
+  <diagram name="alerting-detail" id="alerting-detail">
+    <mxGraphModel dx="1600" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- TITLE -->
+        <mxCell id="title" value="Архитектура alerting-service (дипломная часть)" style="text;html=1;align=center;verticalAlign=middle;fontSize=16;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="400" y="10" width="600" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- LEGEND -->
+        <mxCell id="legend_new" value="Новое (дипломное)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="40" y="820" width="160" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="legend_engine" value="alerting-engine (основной артефакт)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="210" y="820" width="240" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="legend_ext" value="Существующее (не модифицируется)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=10;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="460" y="820" width="240" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="legend_actor" value="Актор" style="ellipse;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="710" y="820" width="100" height="22" as="geometry" />
+        </mxCell>
+
+        <!-- ACTORS -->
+        <mxCell id="act_analyst" value="Аналитик&#10;(DBeaver)" style="ellipse;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="60" y="80" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="act_bi" value="BI-аналитик&#10;(браузер)" style="ellipse;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1240" y="80" width="120" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- LEFT: SOURCES -->
+        <mxCell id="src_pg" value="Postgres movies-db&#10;content.film_work, auth.users&#10;(+ миграция nullable-колонок&#10;в auth.users для сегментации)" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=10;boundedLbl=1;backgroundOutline=1;size=15;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="200" width="220" height="90" as="geometry" />
+        </mxCell>
+
+        <mxCell id="src_kafka" value="Kafka&#10;(события пользователей)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=10;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="330" width="220" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- CENTER: STARROCKS -->
+        <mxCell id="sr_box" value="StarRocks (ugc_analytics)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#444444;verticalAlign=top;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="380" y="170" width="380" height="320" as="geometry" />
+        </mxCell>
+
+        <mxCell id="sr_user_events" value="user_events&#10;(наполняется Routine Load из Kafka)" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=10;boundedLbl=1;backgroundOutline=1;size=12;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="400" y="210" width="340" height="55" as="geometry" />
+        </mxCell>
+
+        <mxCell id="sr_dims" value="dim_films, dim_users, dim_genres&#10;(JDBC Catalog + SUBMIT TASK SCHEDULE EVERY 1 HOUR&#10;— синхронизация внутри StarRocks, без внешнего ETL)" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;boundedLbl=1;backgroundOutline=1;size=12;" vertex="1" parent="1">
+          <mxGeometry x="400" y="285" width="340" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="sr_mv" value="mv_* (Materialized views)&#10;по одному на каждый сценарий + общий;&#10;async refresh поверх user_events и dim_*" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="400" y="375" width="340" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="sr_role_note" value="Движок ходит под ролью alert_reader (только SELECT)" style="text;html=1;align=center;fontSize=9;fontStyle=2;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="400" y="455" width="340" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- RIGHT: ENGINE -->
+        <mxCell id="eng" value="alerting-engine (Python)&#10;&#10;• Планировщик (APScheduler) — по cron каждого правила&#10;• Исполнитель SQL в StarRocks (тайм-аут, потолок выборки)&#10;• Проверка лимита уведомлений&#10;• Создание задачи в notifications (одна транзакция,&#10;  идемпотентный ключ alerting:&#123;rule_id&#125;:&#123;run_id&#125;)&#10;• Восстановление прерванных запусков на старте&#10;• Счётчики и метрики — структурированными логами в ELK" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=3;fontSize=10;align=left;spacingLeft=12;spacingTop=8;verticalAlign=top;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry x="880" y="170" width="380" height="240" as="geometry" />
+        </mxCell>
+
+        <!-- NOTIFICATIONS (external) -->
+        <mxCell id="ext_notif" value="notifications-service&#10;adm_create_task(...) / adm_upsert_template(...)&#10;(существует, не модифицируется)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=10;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="880" y="450" width="380" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- POSTGRES: ALERTING SCHEMA -->
+        <mxCell id="pg_box" value="Postgres movies-db — schema alerting (новая)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#444444;verticalAlign=top;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="560" width="1320" height="230" as="geometry" />
+        </mxCell>
+
+        <mxCell id="pg_funcs" value="SQL-функции adm_*&#10;(SECURITY DEFINER, GRANT EXECUTE на alerting_admin)&#10;&#10;create_rule / update_rule&#10;enable_rule / disable_rule&#10;delete_rule (мягкое)&#10;dry_run_rule / trigger_rule" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;align=left;spacingLeft=10;spacingTop=8;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="60" y="600" width="380" height="170" as="geometry" />
+        </mxCell>
+
+        <mxCell id="pg_views" value="Представления для аудита&#10;&#10;v_rules — правила со статусом и расписанием&#10;v_runs — история срабатываний&#10;v_dispatch — история отправок&#10;(только SELECT для alerting_admin)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;align=left;spacingLeft=10;spacingTop=8;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="470" y="600" width="380" height="170" as="geometry" />
+        </mxCell>
+
+        <mxCell id="pg_tables" value="Таблицы (доступ только у движка)&#10;&#10;t_rules — правила&#10;t_runs — история запусков&#10;t_dispatch_history — отправки (партиции по неделям,&#10;для лимита уведомлений и аудита)" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;boundedLbl=1;backgroundOutline=1;size=12;align=left;spacingLeft=20;spacingTop=8;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="880" y="600" width="460" height="170" as="geometry" />
+        </mxCell>
+
+        <!-- SUPERSET -->
+        <mxCell id="superset" value="Apache Superset&#10;(дашборды поверх mv_*,&#10;MySQL-коннектор к StarRocks)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1180" y="240" width="180" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- DEMO TOOLS -->
+        <mxCell id="demo_tools" value="Утилиты для демонстрации (Python CLI)&#10;demo-seeder — демо-юзеры в auth.users&#10;event-trigger — события в Kafka" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="410" width="220" height="75" as="geometry" />
+        </mxCell>
+
+        <!-- =============== EDGES =============== -->
+
+        <!-- Analyst -> SQL functions -->
+        <mxCell id="e_an_func" value="SQL: adm_create_rule / dry_run / trigger / enable …" style="endArrow=classic;html=1;fontSize=10;fontStyle=1;strokeColor=#9673a6;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="act_analyst" target="pg_funcs">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Views -> Analyst (monitoring) -->
+        <mxCell id="e_views_an" value="SELECT * FROM v_runs / v_dispatch" style="endArrow=classic;html=1;fontSize=9;dashed=1;fontStyle=2;strokeColor=#9673a6;exitX=0;exitY=0.5;exitDx=0;exitDy=0;" edge="1" parent="1" source="pg_views" target="act_analyst">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Postgres ops -> dims (JDBC Catalog inside StarRocks) -->
+        <mxCell id="e_pg_dims" value="JDBC Catalog + SUBMIT TASK&#10;(внутри StarRocks)" style="endArrow=classic;html=1;fontSize=10;" edge="1" parent="1" source="src_pg" target="sr_dims">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Kafka -> user_events -->
+        <mxCell id="e_kafka_ue" value="Routine Load" style="endArrow=classic;html=1;fontSize=10;fontStyle=2;fontColor=#666666;" edge="1" parent="1" source="src_kafka" target="sr_user_events">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- user_events + dims -> mv (refresh) -->
+        <mxCell id="e_ue_mv" style="endArrow=classic;html=1;fontSize=9;dashed=1;" edge="1" parent="1" source="sr_user_events" target="sr_mv">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_dims_mv" style="endArrow=classic;html=1;fontSize=9;dashed=1;" edge="1" parent="1" source="sr_dims" target="sr_mv">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Engine -> StarRocks MV -->
+        <mxCell id="e_eng_sr" value="SELECT user_id, context FROM mv_*" style="endArrow=classic;html=1;fontSize=10;fontStyle=1;strokeColor=#82b366;strokeWidth=2;" edge="1" parent="1" source="eng" target="sr_mv">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Engine -> notifications -->
+        <mxCell id="e_eng_notif" value="adm_create_task(...)" style="endArrow=classic;html=1;fontSize=10;fontStyle=1;strokeColor=#82b366;strokeWidth=2;" edge="1" parent="1" source="eng" target="ext_notif">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Engine -> Postgres (rules+runs+dispatch) -->
+        <mxCell id="e_eng_pg" value="чтение правил,&#10;запись runs и dispatch" style="endArrow=classic;startArrow=classic;html=1;fontSize=10;strokeColor=#82b366;strokeWidth=2;" edge="1" parent="1" source="eng" target="pg_tables">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Superset -> StarRocks -->
+        <mxCell id="e_super_sr" value="MySQL protocol" style="endArrow=classic;html=1;fontSize=10;" edge="1" parent="1" source="superset" target="sr_mv">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- BI -> Superset -->
+        <mxCell id="e_bi_super" style="endArrow=classic;html=1;fontSize=10;" edge="1" parent="1" source="act_bi" target="superset">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Demo tools -> Kafka, Postgres -->
+        <mxCell id="e_demo_kafka" value="event-trigger" style="endArrow=classic;html=1;fontSize=9;fontStyle=2;dashed=1;" edge="1" parent="1" source="demo_tools" target="src_kafka">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_demo_pg" value="demo-seeder" style="endArrow=classic;html=1;fontSize=9;fontStyle=2;dashed=1;" edge="1" parent="1" source="demo_tools" target="src_pg">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

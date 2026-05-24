@@ -1,0 +1,133 @@
+<mxfile host="65bd71144e">
+    <diagram name="full-project" id="full-project">
+        <mxGraphModel dx="1260" dy="716" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1000" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="title" value="Архитектура онлайн-кинотеатра целиком&#xa;Дипломная часть выделена зелёной зоной" style="text;html=1;align=center;verticalAlign=middle;fontSize=15;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="500" y="10" width="600" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="legend_new" value="Новое (дипломное)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="930" width="160" height="22" as="geometry"/>
+                </mxCell>
+                <mxCell id="legend_eng" value="alerting-engine (основной артефакт)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="210" y="930" width="240" height="22" as="geometry"/>
+                </mxCell>
+                <mxCell id="legend_exist" value="Существующее" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="460" y="930" width="140" height="22" as="geometry"/>
+                </mxCell>
+                <mxCell id="legend_actor" value="Актор" style="ellipse;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="610" y="930" width="100" height="22" as="geometry"/>
+                </mxCell>
+                <mxCell id="act_user" value="Пользователь" style="ellipse;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="80" width="110" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="2" style="edgeStyle=none;html=1;exitX=1;exitY=1;exitDx=0;exitDy=0;" edge="1" parent="1" source="act_analyst" target="d_superset">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="act_analyst" value="Аналитик" style="ellipse;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="170" y="80" width="110" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="act_recipient" value="Получатель&#xa;уведомлений" style="ellipse;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="1440" y="80" width="110" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="apps" value="Прикладные сервисы&#xa;(существующие, не модифицируются, кроме auth-service)&#xa;&#xa;movies-nginx, films-search, films-etl, community-content,&#xa;activity-tracker, admin-panel, auth-service (+ миграция в auth.users:&#xa;колонки gender / age_group / country / is_demo)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=10;align=left;spacingLeft=12;spacingTop=8;verticalAlign=top;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="170" width="460" height="130" as="geometry"/>
+                </mxCell>
+                <mxCell id="ds_postgres" value="Postgres movies-db&#xa;схемы: content, auth, community,&#xa;notifications, alerting (новая)" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=10;boundedLbl=1;backgroundOutline=1;size=12;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="340" width="240" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="ds_es_redis" value="Elasticsearch + Redis&#xa;(поиск фильмов, кэш)" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=10;boundedLbl=1;backgroundOutline=1;size=12;" parent="1" vertex="1">
+                    <mxGeometry x="300" y="340" width="200" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="ds_kafka" value="Kafka&#xa;(события пользователей)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="520" y="340" width="200" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="ds_starrocks" value="StarRocks (ugc_analytics)&#xa;user_events (существует, Routine Load)&#xa;+ dim_*, mv_* (новое, дипломное)" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=10;boundedLbl=1;backgroundOutline=1;size=12;" parent="1" vertex="1">
+                    <mxGeometry x="740" y="340" width="280" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="zone" value="ДИПЛОМ — alerting-service" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FAFFF5;strokeColor=#82b366;strokeWidth=4;verticalAlign=top;fontSize=14;fontStyle=1;fontColor=#5d8c4a;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="480" width="980" height="380" as="geometry"/>
+                </mxCell>
+                <mxCell id="d_engine" value="alerting-engine (Python, основной артефакт)&#xa;&#xa;• APScheduler — расписание правил&#xa;• Исполнитель SQL поверх StarRocks (mv_*)&#xa;• Проверка лимита уведомлений&#xa;• Создание задач в notifications-service&#xa;  (одной транзакцией, идемпотентный ключ)&#xa;• Восстановление прерванных запусков&#xa;• Счётчики и метрики — логами в ELK" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=3;fontSize=10;align=left;spacingLeft=12;spacingTop=8;verticalAlign=top;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="320" y="520" width="380" height="230" as="geometry"/>
+                </mxCell>
+                <mxCell id="d_init" value="Init-контейнеры&#xa;&#xa;• alerting-migrations — схема alerting в Postgres,&#xa;  SQL-функции adm_*, представления, роли&#xa;• starrocks-dims-init — DDL для dim_* и mv_*,&#xa;  JDBC Catalog + SUBMIT TASK&#xa;• superset-init — импорт дашбордов" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;align=left;spacingLeft=12;spacingTop=8;verticalAlign=top;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="520" width="240" height="160" as="geometry"/>
+                </mxCell>
+                <mxCell id="d_superset" value="Apache Superset&#xa;(дашборды поверх mv_*)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="720" y="520" width="240" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="d_demo" value="Утилиты для демонстрации (Python CLI)&#xa;demo-seeder — демо-юзеры в auth.users&#xa;event-trigger — события в Kafka" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="720" y="610" width="240" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="zone_note" value="Точки интеграции с проектом:&#xa;• читает правила из Postgres (схема alerting), пишет туда runs и dispatch_history&#xa;• выполняет SQL в StarRocks (mv_*) под read-only ролью&#xa;• создаёт задачи через notifications.adm_create_task (notifications-service не модифицируется)&#xa;• Superset читает mv_* по MySQL-протоколу&#xa;• Для демо: demo-seeder пишет в auth.users, event-trigger публикует в Kafka" style="text;html=1;align=left;verticalAlign=middle;fontSize=10;fontStyle=2;fontColor=#5d8c4a;spacingLeft=12;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="760" width="900" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="notif" value="notifications-service (существующий стек, не модифицируется)&#xa;&#xa;Точка входа: adm_create_task(...)&#xa;Внутри: scheduler (раскрытие аудитории + render) -&gt; outbox в Postgres&#xa;-&gt; publisher -&gt; RabbitMQ (q.email, q.ws, DLX)&#xa;-&gt; email-sender / ws-gateway&#xa;Доставка: Mailpit (SMTP), WebSocket-клиент в браузере" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=10;align=left;spacingLeft=12;spacingTop=8;verticalAlign=top;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="1080" y="170" width="500" height="200" as="geometry"/>
+                </mxCell>
+                <mxCell id="mailpit" value="movies-mailpit&#xa;(локальный SMTP-приёмник)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="1080" y="400" width="240" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="wsclient" value="WS-клиент (браузер)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="1340" y="400" width="240" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="obs" value="Логирование и отслеживание сбоев (нужно подключить новые сервисы)&lt;br&gt;&lt;br&gt;ELK: filebeat собирает stdout всех контейнеров -&amp;gt; logstash -&amp;gt; Elasticsearch -&amp;gt; Kibana&lt;br&gt;Glitchtip: необработанные исключения через sentry-sdk&lt;br&gt;Jaeger: трассировки (для прикладных сервисов)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=10;align=left;spacingLeft=12;spacingTop=8;verticalAlign=top;" parent="1" vertex="1">
+                    <mxGeometry x="1080" y="480" width="500" height="160" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_user_apps" value="HTTP" style="endArrow=classic;html=1;fontSize=10;" parent="1" source="act_user" target="apps" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_apps_pg" style="endArrow=classic;html=1;fontSize=9;strokeColor=#999999;" parent="1" source="apps" target="ds_postgres" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_apps_es" style="endArrow=classic;html=1;fontSize=9;strokeColor=#999999;" parent="1" source="apps" target="ds_es_redis" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_apps_kafka" style="endArrow=classic;html=1;fontSize=9;strokeColor=#999999;" parent="1" source="apps" target="ds_kafka" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_kafka_sr" value="Routine Load" style="endArrow=classic;html=1;fontSize=10;strokeColor=#999999;" parent="1" source="ds_kafka" target="ds_starrocks" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_pg_sr" value="JDBC Catalog + SUBMIT TASK (раз в час -&gt; dim_*)" style="endArrow=classic;html=1;fontSize=10;fontStyle=2;" parent="1" source="ds_postgres" target="ds_starrocks" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_an_pg" value="adm_create_rule, adm_enable, ..." style="endArrow=classic;html=1;fontSize=10;fontStyle=1;strokeColor=#9673a6;strokeWidth=2;" parent="1" source="act_analyst" target="ds_postgres" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_eng_pg" value="t_rules / t_runs / t_dispatch_history" style="endArrow=classic;startArrow=classic;html=1;fontSize=10;strokeColor=#82b366;strokeWidth=2;" parent="1" source="d_engine" target="ds_postgres" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_eng_sr" value="SELECT FROM mv_*" style="endArrow=classic;html=1;fontSize=10;strokeColor=#82b366;strokeWidth=2;" parent="1" source="d_engine" target="ds_starrocks" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_eng_notif" value="adm_create_task(...)" style="endArrow=classic;html=1;fontSize=10;fontStyle=1;strokeColor=#82b366;strokeWidth=3;" parent="1" source="d_engine" target="notif" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_super_sr" value="MySQL protocol" style="endArrow=classic;html=1;fontSize=10;strokeColor=#82b366;strokeWidth=2;" parent="1" source="d_superset" target="ds_starrocks" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_demo_kafka" value="event-trigger" style="endArrow=classic;html=1;fontSize=9;fontStyle=2;dashed=1;strokeColor=#82b366;" parent="1" source="d_demo" target="ds_kafka" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_demo_pg" value="demo-seeder" style="endArrow=classic;html=1;fontSize=9;fontStyle=2;dashed=1;strokeColor=#82b366;" parent="1" source="d_demo" target="ds_postgres" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_notif_mail" value="SMTP" style="endArrow=classic;html=1;fontSize=10;" parent="1" source="notif" target="mailpit" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_notif_ws" value="WebSocket" style="endArrow=classic;html=1;fontSize=10;" parent="1" source="notif" target="wsclient" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_mail_recip" value="email" style="endArrow=classic;html=1;fontSize=10;" parent="1" source="mailpit" target="act_recipient" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_notif_pg" value="outbox в Postgres" style="endArrow=classic;startArrow=classic;html=1;fontSize=9;dashed=1;strokeColor=#999999;" parent="1" source="notif" target="ds_postgres" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>
