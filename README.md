@@ -23,7 +23,7 @@ https://github.com/Vilbert55/notifications_sprint_1
 - **Logstash** - обработка и маршрутизация логов из всех сервисов в Elasticsearch
 - **Kibana** - визуализация логов из индекса `movies-logs-*`
 - **Filebeat** - агент сбора логов Docker-контейнеров, отправляет в Logstash
-- **Sentry** - мониторинг ошибок (films-search-service, auth-service, community-content-service, activity-tracker-service)
+- **Glitchtip(Sentry)** - мониторинг ошибок (films-search-service, auth-service, community-content-service, activity-tracker-service)
 
 ## Быстрый запуск
 
@@ -51,6 +51,7 @@ https://github.com/Vilbert55/notifications_sprint_1
 | Kafka UI            | http://localhost:8080                           | Веб-интерфейс Kafka                |
 | Elasticsearch       | http://localhost:9200/                          | Прямой доступ к ES                 |
 | Kibana              | http://localhost:5601                           | Визуализация логов (ELK)           |
+| Glitchtip (Sentry)  | http://localhost:9000                           | Веб-интерфейс мониторинга ошибок   |
 | Jaeger UI           | http://localhost:16686                          | Интерфейс трассировки (Jaeger)     |
 | StarRocks HTTP      | http://localhost:8030                           | HTTP‑интерфейс StarRocks           |
 | StarRocks MySQL     | localhost:9030                                  | MySQL‑интерфейс StarRocks          |
