@@ -1,10 +1,10 @@
 <mxfile host="65bd71144e">
     <diagram name="full-project" id="full-project">
-        <mxGraphModel dx="1260" dy="716" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1000" math="0" shadow="0">
+        <mxGraphModel dx="1086" dy="556" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1000" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
-                <mxCell id="title" value="Архитектура онлайн-кинотеатра целиком&#xa;Дипломная часть выделена зелёной зоной" style="text;html=1;align=center;verticalAlign=middle;fontSize=15;fontStyle=1;" parent="1" vertex="1">
+                <mxCell id="title" value="Архитектура онлайн-кинотеатра целиком" style="text;html=1;align=center;verticalAlign=middle;fontSize=15;fontStyle=1;" parent="1" vertex="1">
                     <mxGeometry x="500" y="10" width="600" height="40" as="geometry"/>
                 </mxCell>
                 <mxCell id="legend_new" value="Новое (дипломное)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" parent="1" vertex="1">
@@ -22,7 +22,7 @@
                 <mxCell id="act_user" value="Пользователь" style="ellipse;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" parent="1" vertex="1">
                     <mxGeometry x="40" y="80" width="110" height="50" as="geometry"/>
                 </mxCell>
-                <mxCell id="2" style="edgeStyle=none;html=1;exitX=1;exitY=1;exitDx=0;exitDy=0;" edge="1" parent="1" source="act_analyst" target="d_superset">
+                <mxCell id="2" style="edgeStyle=none;html=1;exitX=1;exitY=1;exitDx=0;exitDy=0;" parent="1" source="act_analyst" target="d_superset" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
                 <mxCell id="act_analyst" value="Аналитик" style="ellipse;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" parent="1" vertex="1">
@@ -94,7 +94,7 @@
                 <mxCell id="e_pg_sr" value="JDBC Catalog + SUBMIT TASK (раз в час -&gt; dim_*)" style="endArrow=classic;html=1;fontSize=10;fontStyle=2;" parent="1" source="ds_postgres" target="ds_starrocks" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="e_an_pg" value="adm_create_rule, adm_enable, ..." style="endArrow=classic;html=1;fontSize=10;fontStyle=1;strokeColor=#9673a6;strokeWidth=2;" parent="1" source="act_analyst" target="ds_postgres" edge="1">
+                <mxCell id="e_an_pg" value="" style="endArrow=classic;html=1;fontSize=10;fontStyle=1;strokeColor=#9673a6;strokeWidth=2;" parent="1" source="act_analyst" target="ds_postgres" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
                 <mxCell id="e_eng_pg" value="t_rules / t_runs / t_dispatch_history" style="endArrow=classic;startArrow=classic;html=1;fontSize=10;strokeColor=#82b366;strokeWidth=2;" parent="1" source="d_engine" target="ds_postgres" edge="1">
