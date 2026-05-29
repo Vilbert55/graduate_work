@@ -262,7 +262,7 @@ services:
     networks:
       - net
     ports:
-      - "8080:8080"                     # Веб-интерфейс
+      - "8081:8080"                     # Веб-интерфейс
     environment:
       - KAFKA_CLUSTERS_0_NAME=ugc-cluster
       - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=movies-kafka:9092
