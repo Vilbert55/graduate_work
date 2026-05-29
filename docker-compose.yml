@@ -468,6 +468,51 @@ services:
     command: ["python", "-m", "src.workers.recovery"]
     restart: unless-stopped
 
+  # ------------------------------------------------------------------
+  # Дипломный сервис alerting: SQL-правила поверх StarRocks →
+  # задачи в notifications-service по расписанию APScheduler.
+  # ------------------------------------------------------------------
+  movies-alerting-migrations:
+    build: alerting-service
+    container_name: movies-alerting-migrations
+    networks:
+      - net
+    env_file:
+      - .env
+    environment:
+      - SQL_HOST=movies-db
+      - DB_PORT=5432
+      - MIGRATE=1
+    depends_on:
+      movies-db:
+        condition: service_healthy
+      # Шаблоны уведомлений сидируются через notifications.adm_upsert_template,
+      # значит схема notifications должна быть готова первой.
+      movies-notifications-migrations:
+        condition: service_completed_successfully
+    command: ["true"]   # entrypoint выполнит alembic upgrade и завершится
+
+  movies-alerting-engine:
+    build: alerting-service
+    container_name: movies-alerting-engine
+    networks:
+      - net
+    env_file:
+      - .env
+    environment:
+      - SQL_HOST=movies-db
+      - DB_PORT=5432
+      - MIGRATE=0
+    depends_on:
+      movies-db:
+        condition: service_healthy
+      movies-starrocks:
+        condition: service_healthy
+      movies-alerting-migrations:
+        condition: service_completed_successfully
+    command: ["python", "-m", "src.workers"]
+    restart: unless-stopped
+
   # Mailpit — локальный SMTP-приёмник для отладки писем
   movies-mailpit:
     image: axllent/mailpit:v1.27.10
