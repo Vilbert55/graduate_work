@@ -24,6 +24,10 @@ https://github.com/Vilbert55/notifications_sprint_1
 - **Kibana** - визуализация логов из индекса `movies-logs-*`
 - **Filebeat** - агент сбора логов Docker-контейнеров, отправляет в Logstash
 - **Glitchtip(Sentry)** - мониторинг ошибок (films-search-service, auth-service, community-content-service, activity-tracker-service)
+- **Alerting Engine (FastAPI/APScheduler)** _(дипломный)_ — движок SQL-правил поверх StarRocks; по расписанию каждого правила формирует задачи в notifications-service. Управление через SQL-функции `alerting.adm_*` в DBeaver (нет HTTP-API).
+- **StarRocks dims + Materialized Views** _(дипломный)_ — `dim_films / dim_users / dim_genres / dim_date` (JDBC Catalog + `SUBMIT TASK SCHEDULE EVERY 1 HOUR`); 5 MV (`mv_user_activity / mv_user_top_genres / mv_segment_film_activity / mv_film_watch_hourly / mv_weekend_film_activity`).
+- **Apache Superset** _(дипломный)_ — BI поверх Materialized views StarRocks (datasource `starrocks_analytics`, роль `alert_reader`).
+- **Demo tools** _(дипломный, profile `demo`)_ — CLI `seed-users` / `trigger-events` для подготовки демо-сценариев.
 
 ## Быстрый запуск
 
@@ -58,6 +62,7 @@ https://github.com/Vilbert55/notifications_sprint_1
 | RabbitMQ Management | http://localhost:15672                          | Веб-интерфейс RabbitMQ (guest/guest) |
 | Mailpit             | http://localhost:8025                           | Локальный SMTP-приёмник для отладки |
 | WS Gateway          | ws://localhost:8005/notifications/ws            | WebSocket endpoint для in-app уведомлений |
+| Superset            | http://localhost:8088                           | BI поверх Materialized views StarRocks (admin/admin) |
 
 
 ## Структура проекта
@@ -70,12 +75,19 @@ https://github.com/Vilbert55/notifications_sprint_1
 ├── films-etl-service/          # ETL‑сервис
 ├── auth-service/               # Сервис авторизации
 ├── activity-tracker-service/   # UGC API — сбор пользовательских событий
+├── alerting-service/           # (дипломный) движок SQL-правил поверх StarRocks
+├── starrocks_dims_init/        # (дипломный) init: dim_*, JDBC Catalog, MV, alert_reader
+├── superset/                   # (дипломный) Apache Superset BI
+├── demo-tools/                 # (дипломный) CLI demo-seeder + event-trigger
 ├── configs-nginx/              # Конфиги Nginx
 ├── configs-logstash/           # Pipeline Logstash
 ├── configs-filebeat/           # Конфиг Filebeat
 ├── docker-compose.yml
 ├── .env.template               # шаблон файла переменных окружения (.env)
 ├── es_schema_movies.json       # Схема индекса фильмов для Elasticsearch
+├── diploma_tz.md               # Дипломное ТЗ (расширенное)
+├── diploma_tz_short.md         # Дипломное ТЗ (короткое)
+├── diploma_week2_notes.md      # Аналитическая записка по неделе 2
 ├── .github                     # Workflow Github Actions
 └── README.md                   # Этот файл
 ```

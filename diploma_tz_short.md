@@ -23,17 +23,18 @@
 |---|---|
 | `alerting-engine` | Главный артефакт. Планировщик APScheduler + исполнитель SQL поверх StarRocks + двухуровневый лимит уведомлений + восстановление после сбоя. |
 | `alerting-migrations` | Init-контейнер: миграции схемы `alerting` в Postgres, SQL-функции `adm_*`, регистрация шаблонов уведомлений через `notifications.adm_upsert_template`. |
-| `starrocks-dims-init` | Init-контейнер: DDL для `dim_*` и `mv_*`, JDBC Catalog поверх Postgres, `SUBMIT TASK ... SCHEDULE EVERY 1 HOUR` для синхронизации измерений. |
-| `superset` + `superset-init` | Дашборды поверх Materialized views (2–3 чарта). |
-
-**Утилиты для демонстрации** (Python CLI, запускаются вручную): `demo-seeder` создаёт тестовых пользователей в `auth.users`; 
-`event-trigger` льёт события в Kafka от этих пользователей по выбранному сценарию.
+| `starrocks-dims-init` | Init-контейнер: DDL для `dim_*` (включая `dim_date` поверх ранее неиспользуемого `content.date_dimension`) и `mv_*`, JDBC Catalog поверх Postgres, `SUBMIT TASK ... SCHEDULE EVERY 1 HOUR` для синхронизации измерений, роль `alert_reader`. |
+| `superset` (Apache Superset 6.1.0) | Дашборды поверх Materialized views (`starrocks_analytics` datasource через официальный SQLAlchemy dialect `starrocks://`). |
+| `superset-db-init` | Init-контейнер: создаёт базу `superset` в общей `movies-db` (по образцу `sentry-db-init`). |
+| `demo-tools` (profile `demo`) | Один Docker-образ с двумя Typer-подкомандами: `seed-users` и `trigger-events`. Запуск только вручную: `docker compose --profile demo run --rm movies-demo-tools <cmd>`. |
 
 **Изменения в существующих сервисах:**
 
 | Сервис | Изменение | Цель |
 |---|---|---|
 | `auth-service` | Миграция: добавить в `auth.users` nullable-колонки `gender / age_group / country / is_demo` + расширить схему профиля. | Чтобы у справочника `dim_users` были поля сегментации. |
+| `activity-tracker-service` | Новый event_type `recommendation` (`POST /ugc/api/v1/events/recommendation`, Kafka-топик `recommendations`, поля `rule_code`/`notification_message_id`/`action`). | Замыкает контур «правило → письмо → клик → факт в StarRocks». Аналитик в Superset считает конверсию своих собственных правил. |
+| `starrocks_init/init.sql` | `user_events` — переведена в **Primary Key table** по `(request_id, event_type)` для встроенной дедупликации через REPLACE-семантику. Добавлена Routine Load `recommendations_load`. | Защита от дублей при ретраях Kafka/Routine Load без работы на стороне правил. |
 
 ## Архитектура (поток данных)
 

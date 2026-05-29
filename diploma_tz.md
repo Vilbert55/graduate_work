@@ -133,6 +133,8 @@ Mindbox, Sendsay, RetentionRocket (Россия), Customer.io, Braze, Klaviyo, B
 | Сервис | Что меняется |
 |---|---|
 | **auth-service** | Alembic-миграция в `auth.users`: добавляем nullable-колонки `gender VARCHAR(16)`, `age_group VARCHAR(16)`, `country VARCHAR(2)`, `is_demo BOOLEAN DEFAULT FALSE`. Pydantic-схемы профиля (`/me`, регистрация) расширяются соответствующими полями (`is_demo` — только для внутреннего использования). |
+| **activity-tracker-service** | Новый эндпоинт `POST /ugc/api/v1/events/recommendation` принимает реакции пользователя на письма alerting (поля `rule_code`, `notification_message_id`, `action ∈ {opened, clicked, dismissed}`, опц. `film_id`). Новый Kafka-топик `recommendations`. Замыкает контур «правило → задача → письмо → клик → факт обратно в StarRocks» — аналитик в Superset может построить чарт конверсии собственного правила. |
+| **starrocks_init/init.sql** | Таблица `user_events` переведена с `DUPLICATE KEY(request_id, user_id, event_type)` на **`PRIMARY KEY (request_id, event_type)`** — встроенная дедупликация StarRocks (REPLACE-семантика при конфликте PK). Добавлена Routine Load `recommendations_load` для нового event_type. Добавлены колонки `rule_code`, `notification_message_id`, `action`. |
 
 
 ### 6.5 Логическое разделение ответственностей
@@ -284,22 +286,28 @@ CREATE INDEX ON alerting.t_dispatch_history (rule_id, user_id, sent_at DESC);
 
 ### 9.2 StarRocks, база `ugc_analytics`
 
-Существующее: `user_events` (наполняется Routine Load).
+Существующее (изменено): `user_events` (наполняется Routine Load). Таблица
+переведена с `DUPLICATE KEY` на **`PRIMARY KEY (request_id, event_type)`** —
+дедупликация обеспечивается транспортом (REPLACE-семантика StarRocks при
+конфликте PK), а не запросами в правилах. Добавлены колонки `rule_code`,
+`notification_message_id`, `action` под новый event_type `recommendation`.
 
 Добавляется:
 
 **Dim-таблицы** (синхронизируются раз в час из Postgres через JDBC Catalog + `SUBMIT TASK`):
 - `dim_films(film_id PK, title, type, genres ARRAY<STRING>, is_new BOOLEAN, creation_date, rating)` — `is_new` вычисляется по `creation_date > now() - INTERVAL 30 DAY`.
-- `dim_users(user_id PK, gender, age_group, country, segment_code, registered_at)` — `segment_code` производный (например, `F_25_34_RU`).
+- `dim_users(user_id PK, gender, age_group, country, segment_code, registered_at, is_demo)` — `segment_code` производный (`concat_ws('_', gender, age_group, country)`, напр. `female_25-34_RU`).
 - `dim_genres(genre_id PK, name)`
+- `dim_date(date PK, year, quarter, month, day, day_of_week, week_of_year, is_weekend, is_holiday)` — задействует ранее неиспользуемый `content.date_dimension` из `admin-panel-service`; синхронизируется одноразовым `SUBMIT TASK sync_dim_date` (растёт ровно на одну строку в сутки). Применяется в правилах вида «по выходным», «по пятницам», «в праздничные дни» через join — без дублирования date-арифметики в каждом SQL.
 
-Все три — `PRIMARY KEY` таблицы StarRocks (поддерживают `INSERT OVERWRITE`).
+Все четыре — `PRIMARY KEY` таблицы StarRocks (поддерживают `INSERT OVERWRITE`).
 
-**Materialized views** (3 минимум, по числу сценариев + общий):
+**Materialized views** (5 шт., по числу сценариев + два общих):
 - `mv_user_activity` — для сценария возврата угасшего пользователя: `(user_id, watches_last_30d, was_active_last_month BOOLEAN, last_watch_at)`.
 - `mv_user_top_genres` — компаньон того же сценария: `(user_id, top_genres ARRAY<STRING>)` (top-3 жанра по числу просмотров за 30 дней).
 - `mv_segment_film_activity` — для сценария тренда в сегменте.
 - `mv_film_watch_hourly` — общий MV (часовые агрегаты по фильмам), используется и в Superset, и в дополнительных правилах.
+- `mv_weekend_film_activity` — пример агрегата с join к `dim_date.is_weekend`. Поддерживает сценарий «фильм X стал популярен на выходных → промо в субботу утром».
 
 Все MV — async, refresh по факту изменения источников (StarRocks делает это автоматически).
 
@@ -307,7 +315,9 @@ CREATE INDEX ON alerting.t_dispatch_history (rule_id, user_id, sent_at DESC);
 
 ## 10. Демонстрация
 
-Показать на защите два сценария - «возврат угасшего пользователя» и «тренд в сегменте».
+Показать на защите два основных сценария — «возврат угасшего пользователя»
+и «тренд в сегменте», плюс дополнительно `weekend_burst` для иллюстрации
+применения `dim_date` (см. §10.4).
 
 Канал в демо — только электронная почта (Mailpit как приёмник). WebSocket-канал поддерживается архитектурно.
 
@@ -364,6 +374,36 @@ WHERE a.user_id IS NULL
 **Cap:** не чаще 1 раза в 7 дней; глобальный потолок 3 письма/день.
 
 **Демо-триггер.** Перед демо `demo-seeder` создаёт пользователей целевого сегмента (`women_25_34`). `event-trigger` выбирает фильм X из существующих фикстур (по фильтру жанра/рейтинга) и генерирует всплеск просмотров этого фильма от пользователей. После часового refresh dim-таблиц и MV — тик правила, письма пользователям сегмента, которые X ещё не смотрели.
+
+### 10.4 Сценарий C (доп.) — Выходной всплеск (weekend burst)
+
+**Бизнес-история.** Группа пользователей активно смотрит подборку фильмов
+именно в субботу-воскресенье. → В пятницу утром им уходит письмо с
+подборкой на грядущие выходные.
+
+**MV `mv_weekend_film_activity`:** `(bucket_date DATE, film_id PK, views, unique_viewers)` — агрегат строится с фильтром `dim_date.is_weekend = TRUE`.
+
+**Правило:**
+```sql
+SELECT
+  user_id,
+  jsonb_build_object('film_id', m.film_id) AS context
+FROM ugc_analytics.mv_weekend_film_activity m
+JOIN ugc_analytics.user_events e ON e.film_id = m.film_id
+  AND e.event_type = 'view'
+  AND e.client_time > now() - INTERVAL 14 DAY
+WHERE m.bucket_date > current_date - INTERVAL 14 DAY
+GROUP BY user_id, m.film_id
+HAVING count(*) >= 3
+```
+
+**Cron:** `0 9 * * 5` (каждую пятницу в 9:00 UTC).
+**Cap:** не чаще 1 раза в 14 дней.
+
+**Демо-триггер.** `event-trigger --scenario weekend_burst` льёт view-события
+демо-юзеров только в субботу-воскресенье прошлой недели. Триггерит
+`mv_weekend_film_activity`. Иллюстрирует, как `dim_date` (бывший
+неиспользуемый `content.date_dimension`) упрощает date-арифметику в правилах.
 
 ---
 
