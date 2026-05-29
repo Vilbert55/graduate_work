@@ -37,11 +37,18 @@ SELECT alerting.adm_create_rule(
 );
 
 -- ============================================================
--- 3. Dry-run (на неделе 2 — заглушка, вернёт 0/0/{}).
+-- 3. Dry-run: выполнить SQL в StarRocks, посчитать аудиторию, БЕЗ рассылки.
+--    Функция возвращает run_id; результат — в v_runs.
 -- ============================================================
-SELECT * FROM alerting.adm_dry_run_rule(
+SELECT alerting.adm_dry_run_rule(
     (SELECT id FROM alerting.t_rules WHERE code = 'winback_active_user')
-);
+) AS run_id;
+\gset
+
+-- Подождать 1-2 секунды, потом посмотреть:
+SELECT status, matched_users, after_cap_users, error
+FROM alerting.v_runs
+WHERE run_id = :'run_id';
 
 -- ============================================================
 -- 4. Включаем / выключаем / удаляем правило.
