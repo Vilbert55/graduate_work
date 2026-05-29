@@ -1,0 +1,113 @@
+"""seed-users — создать N тестовых юзеров в auth.users (идемпотентно).
+
+Идемпотентность: маркер `auth.users.is_demo = TRUE`. Повторный запуск
+сначала удаляет всех с этим флагом, потом создаёт count новых. На
+реальных пользователей команда не влияет.
+"""
+from __future__ import annotations
+
+import asyncio
+import random
+import uuid
+from itertools import product
+
+import asyncpg
+import typer
+from bcrypt import gensalt, hashpw
+from faker import Faker
+
+from src.config import settings
+
+
+# Сегменты для распределения: список совместимых пар (gender, age_group, country).
+# Расширяемо; для демо хватит 6 базовых сегментов.
+DEFAULT_SEGMENTS = list(product(
+    ["female", "male"],
+    ["18-24", "25-34", "35-44"],
+    ["RU"],
+))
+
+
+def _make_login(idx: int, segment: tuple[str, str, str]) -> str:
+    """Логин вида demo_female_25-34_RU_0007."""
+    g, a, c = segment
+    return f"demo_{g}_{a}_{c}_{idx:04d}"
+
+
+def _hash_password(password: str) -> str:
+    """bcrypt-хеш, совместимый с passlib.CryptContext(['bcrypt']) в auth-service."""
+    return hashpw(password.encode("utf-8"), gensalt()).decode("utf-8")
+
+
+async def _seed(count: int, segment_filter: str | None, password: str) -> int:
+    if count <= 0:
+        return 0
+
+    if segment_filter:
+        try:
+            g, a, c = segment_filter.split("_")
+            segments = [(g, a, c)]
+        except ValueError:
+            raise typer.BadParameter(
+                "--segment expected 'gender_age_country', e.g. 'female_25-34_RU'",
+            ) from None
+    else:
+        segments = DEFAULT_SEGMENTS
+
+    faker = Faker()
+    pwd_hash = _hash_password(password)
+
+    conn = await asyncpg.connect(dsn=settings.database_dsn)
+    try:
+        # Идемпотентность: убираем прошлых демо-юзеров. Каскадно удалятся
+        # их refresh_tokens / oauth_providers (ON DELETE CASCADE / FK без cascade
+        # очистится TRUNCATE-аналогом — здесь DELETE покрывает оба случая).
+        await conn.execute("DELETE FROM auth.refresh_tokens WHERE user_id IN (SELECT id FROM auth.users WHERE is_demo)")
+        await conn.execute("DELETE FROM auth.user_roles    WHERE user_id IN (SELECT id FROM auth.users WHERE is_demo)")
+        await conn.execute("DELETE FROM auth.user_oauth_providers WHERE user_id IN (SELECT id FROM auth.users WHERE is_demo)")
+        await conn.execute("DELETE FROM auth.users WHERE is_demo")
+
+        rows = []
+        for i in range(count):
+            segment = random.choice(segments)
+            rows.append((
+                uuid.uuid4(),
+                _make_login(i, segment),
+                pwd_hash,
+                faker.first_name_female() if segment[0] == "female" else faker.first_name_male(),
+                faker.last_name(),
+                segment[0],
+                segment[1],
+                segment[2],
+            ))
+
+        await conn.executemany(
+            """
+            INSERT INTO auth.users(
+                id, login, password, first_name, last_name,
+                gender, age_group, country, is_demo, created_at
+            ) VALUES (
+                $1, $2, $3, $4, $5,
+                $6, $7, $8, TRUE, (now() AT TIME ZONE 'utc')
+            )
+            """,
+            rows,
+        )
+    finally:
+        await conn.close()
+
+    return len(rows)
+
+
+def seed_users_cmd(
+    count: int = typer.Option(50, "--count", "-n", help="Сколько юзеров создать."),
+    segment: str | None = typer.Option(
+        None, "--segment", "-s",
+        help="Ограничить одним сегментом 'gender_age_country', напр. female_25-34_RU.",
+    ),
+    password: str = typer.Option("demo_password", "--password",
+                                 help="Общий пароль для всех демо-юзеров."),
+) -> None:
+    """Создать count демо-юзеров (идемпотентно: предыдущих с is_demo=TRUE удалит)."""
+    created = asyncio.run(_seed(count, segment, password))
+    typer.echo(f"OK: deleted previous is_demo users, created {created} new demo users")

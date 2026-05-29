@@ -645,6 +645,27 @@ services:
         condition: service_healthy
 
 
+  # Дипломные демо-утилиты. profile=demo — не запускаются по умолчанию,
+  # только через docker compose --profile demo run --rm movies-demo-tools <cmd>.
+  movies-demo-tools:
+    build: demo-tools
+    container_name: movies-demo-tools
+    networks:
+      - net
+    env_file:
+      - .env
+    environment:
+      - SQL_HOST=movies-db
+      - DB_PORT=5432
+    profiles: ["demo"]
+    depends_on:
+      movies-db:
+        condition: service_healthy
+      movies-kafka:
+        condition: service_healthy
+      movies-auth-service:
+        condition: service_healthy
+
   movies-logstash:
     image: docker.elastic.co/logstash/logstash:8.19.15
     container_name: movies-logstash
