@@ -603,6 +603,47 @@ services:
       movies-starrocks:
         condition: service_healthy
 
+  # Дипломная часть: dim-таблицы, JDBC Catalog поверх Postgres,
+  # SUBMIT TASK для часовой синхронизации, Materialized views.
+  # Требует, чтобы movies-starrocks-init завершился (есть ugc_analytics.user_events)
+  # и чтобы Postgres был жив (auth.users / content.* — источники).
+  movies-starrocks-dims-init:
+    image: mysql:8.0
+    container_name: movies-starrocks-dims-init
+    networks:
+      - net
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - ./starrocks_dims_init/init.sql:/init.sql.tmpl:ro
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        apt-get update >/dev/null && apt-get install -y gettext-base >/dev/null
+        echo "Waiting for StarRocks BE..."
+        until mysql -h movies-starrocks -P 9030 -uroot -e "SHOW BACKENDS\G" 2>/dev/null | grep -q "Alive: true"; do
+            sleep 5
+        done
+        echo "Substituting env vars in init.sql..."
+        envsubst '$${POSTGRES_USER} $${POSTGRES_PASSWORD}' < /init.sql.tmpl > /init.sql
+        echo "Applying dims init..."
+        mysql -h movies-starrocks -P 9030 -uroot < /init.sql
+        echo "Dims initialization finished."
+    depends_on:
+      movies-starrocks:
+        condition: service_healthy
+      movies-starrocks-init:
+        condition: service_completed_successfully
+      movies-db:
+        condition: service_healthy
+      # auth-миграция должна добавить колонки сегментации до того, как
+      # JDBC Catalog SELECT-нет u.gender / u.age_group / u.country / u.is_demo.
+      movies-auth-service:
+        condition: service_healthy
+
 
   movies-logstash:
     image: docker.elastic.co/logstash/logstash:8.19.15
