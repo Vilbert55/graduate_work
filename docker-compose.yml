@@ -791,6 +791,54 @@ services:
       sentry-migrate:
         condition: service_completed_successfully
 
+  # ------------------------------------------------------------------
+  # Apache Superset 6.1.0 — BI поверх Materialized views StarRocks.
+  # Метаданные Superset хранятся в отдельной базе `superset` в общей movies-db
+  # (по образцу glitchtip).
+  # ------------------------------------------------------------------
+  superset-db-init:
+    image: postgres:17.9-alpine
+    container_name: superset-db-init
+    networks:
+      - net
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        until pg_isready -h movies-db -U ${POSTGRES_USER}; do sleep 1; done
+        psql -h movies-db -U ${POSTGRES_USER} -tc "SELECT 1 FROM pg_database WHERE datname='superset'" | grep -q 1 || \
+          psql -h movies-db -U ${POSTGRES_USER} -c "CREATE DATABASE superset"
+    depends_on:
+      movies-db:
+        condition: service_healthy
+
+  movies-superset:
+    build: ./superset
+    container_name: movies-superset
+    networks:
+      - net
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - SUPERSET_SECRET_KEY=${SUPERSET_SECRET_KEY}
+      - SUPERSET_ADMIN_USER=${SUPERSET_ADMIN_USER}
+      - SUPERSET_ADMIN_PASSWORD=${SUPERSET_ADMIN_PASSWORD}
+      - SUPERSET_ADMIN_EMAIL=${SUPERSET_ADMIN_EMAIL}
+    ports:
+      - "8088:8088"
+    depends_on:
+      superset-db-init:
+        condition: service_completed_successfully
+      movies-starrocks:
+        condition: service_healthy
+      movies-starrocks-dims-init:
+        condition: service_completed_successfully
+    command: ["/app/init/superset_init.sh"]
+    restart: unless-stopped
+
 volumes:
   movies-static_volume:
   movies-media_volume:
