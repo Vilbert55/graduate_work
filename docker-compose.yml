@@ -249,6 +249,8 @@ services:
             --topic clicks --partitions 1 --replication-factor 1
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server movies-kafka:9092 --create --if-not-exists \
             --topic custom_events --partitions 1 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server movies-kafka:9092 --create --if-not-exists \
+            --topic recommendations --partitions 1 --replication-factor 1
         echo "Topics creation finished."
     depends_on:
       movies-kafka:

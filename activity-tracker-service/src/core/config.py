@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     kafka_topic_clicks: str = 'clicks'
     kafka_topic_views: str = 'views'
     kafka_topic_custom: str = 'custom_events'
+    kafka_topic_recommendations: str = 'recommendations'
 
     # Sentry (пустая строка отключает интеграцию)
     sentry_dsn: str = ''
