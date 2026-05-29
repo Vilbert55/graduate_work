@@ -21,6 +21,15 @@ class User(Base):
 
     is_superuser = Column(Boolean, default=False)
 
+    # Поля сегментации — нужны для построения dim_users в StarRocks
+    # и для правил alerting-service (winback, segment_trend, ...).
+    gender = Column(String(16), nullable=True)
+    age_group = Column(String(16), nullable=True)
+    country = Column(String(2), nullable=True)
+    # is_demo — маркер тестового пользователя, созданного demo-tools.
+    # demo-seeder удаляет всех is_demo=TRUE и пересоздаёт — идемпотентность.
+    is_demo = Column(Boolean, nullable=False, server_default='false', default=False)
+
     oauth_providers = relationship("UserOAuthProvider", back_populates="user", cascade="all, delete-orphan")
 
 
