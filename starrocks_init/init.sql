@@ -2,7 +2,7 @@ CREATE DATABASE IF NOT EXISTS ugc_analytics;
 
 USE ugc_analytics;
 
-ADMIN SET FRONTEND CONFIG ("max_routine_load_task_num_per_be" = "3");
+ADMIN SET FRONTEND CONFIG ("max_routine_load_task_num_per_be" = "4");  -- 4 routine loads: views/clicks/custom/recommendations
 
 SELECT sleep(10); -- на всякий случай, т.к. конфиг применяется асинхронно, а вообще для прода весь конфиг надо отдельно выносить
 

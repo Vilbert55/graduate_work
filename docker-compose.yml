@@ -622,13 +622,16 @@ services:
     entrypoint: ["/bin/bash", "-c"]
     command:
       - |
-        apt-get update >/dev/null && apt-get install -y gettext-base >/dev/null
+        set -euo pipefail
         echo "Waiting for StarRocks BE..."
         until mysql -h movies-starrocks -P 9030 -uroot -e "SHOW BACKENDS\G" 2>/dev/null | grep -q "Alive: true"; do
             sleep 5
         done
         echo "Substituting env vars in init.sql..."
-        envsubst '$${POSTGRES_USER} $${POSTGRES_PASSWORD}' < /init.sql.tmpl > /init.sql
+        # mysql:8.0 (Oracle Linux base) has neither apt-get nor envsubst — use sed.
+        sed -e "s|\$${POSTGRES_USER}|$${POSTGRES_USER}|g" \
+            -e "s|\$${POSTGRES_PASSWORD}|$${POSTGRES_PASSWORD}|g" \
+            /init.sql.tmpl > /init.sql
         echo "Applying dims init..."
         mysql -h movies-starrocks -P 9030 -uroot < /init.sql
         echo "Dims initialization finished."

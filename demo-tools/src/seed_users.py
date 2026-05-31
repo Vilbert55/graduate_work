@@ -70,9 +70,11 @@ async def _seed(count: int, segment_filter: str | None, password: str) -> int:
         rows = []
         for i in range(count):
             segment = random.choice(segments)
+            login = _make_login(i, segment)
             rows.append((
                 uuid.uuid4(),
-                _make_login(i, segment),
+                login,
+                f"{login}@demo.local",  # email-канал требует адрес; Mailpit примет любой
                 pwd_hash,
                 faker.first_name_female() if segment[0] == "female" else faker.first_name_male(),
                 faker.last_name(),
@@ -84,11 +86,11 @@ async def _seed(count: int, segment_filter: str | None, password: str) -> int:
         await conn.executemany(
             """
             INSERT INTO auth.users(
-                id, login, password, first_name, last_name,
+                id, login, email, password, first_name, last_name,
                 gender, age_group, country, is_demo, created_at
             ) VALUES (
-                $1, $2, $3, $4, $5,
-                $6, $7, $8, TRUE, (now() AT TIME ZONE 'utc')
+                $1, $2, $3, $4, $5, $6,
+                $7, $8, $9, TRUE, (now() AT TIME ZONE 'utc')
             )
             """,
             rows,

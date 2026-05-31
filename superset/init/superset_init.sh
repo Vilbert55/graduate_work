@@ -20,9 +20,15 @@ superset fab create-admin \
 echo "[superset-init] initializing roles and permissions..."
 superset init
 
-# StarRocks говорит по MySQL-протоколу; dialect "starrocks://" регистрирует
-# официальный пакет starrocks (см. Dockerfile).
-STARROCKS_URI="starrocks://alert_reader:alert_reader@movies-starrocks:9030/ugc_analytics"
+# StarRocks говорит по MySQL-протоколу; пакет starrocks регистрирует dialect.
+# Вариант starrocks:// по умолчанию тянет DBAPI MySQLdb (mysqlclient, требует
+# системных libmysqlclient + сборку). Используем starrocks+pymysql:// — чистый
+# Python-драйвер pymysql уже идёт зависимостью пакета starrocks.
+# Superset StarRocksEngineSpec парсит database как "catalog.schema"
+# (см. adjust_engine_params): без точки строка считается ИМЕНЕМ КАТАЛОГА и
+# даёт "Unknown catalog". Внутренние таблицы StarRocks живут в default_catalog,
+# база — ugc_analytics, поэтому путь = default_catalog.ugc_analytics.
+STARROCKS_URI="starrocks+pymysql://alert_reader:alert_reader@movies-starrocks:9030/default_catalog.ugc_analytics"
 
 echo "[superset-init] registering StarRocks database connection..."
 # Используем set-database-uri (идемпотентно: создаст или обновит запись по имени).

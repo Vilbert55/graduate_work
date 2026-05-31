@@ -106,7 +106,7 @@ INSERT OVERWRITE dim_genres
 SELECT
     CAST(id AS VARCHAR(36)) AS genre_id,
     name
-FROM pg_catalog.movies.content.genre;
+FROM pg_catalog.content.genre;
 
 INSERT OVERWRITE dim_films
 SELECT
@@ -118,11 +118,11 @@ SELECT
     f.creation_date IS NOT NULL AND f.creation_date > date_sub(current_date(), INTERVAL 30 DAY) AS is_new,
     (
         SELECT array_agg(g.name)
-        FROM pg_catalog.movies.content.genre_film_work gfw
-        JOIN pg_catalog.movies.content.genre g ON g.id = gfw.genre_id
+        FROM pg_catalog.content.genre_film_work gfw
+        JOIN pg_catalog.content.genre g ON g.id = gfw.genre_id
         WHERE gfw.film_work_id = f.id
     ) AS genres
-FROM pg_catalog.movies.content.film_work f;
+FROM pg_catalog.content.film_work f;
 
 INSERT OVERWRITE dim_users
 SELECT
@@ -133,7 +133,7 @@ SELECT
     concat_ws('_', coalesce(u.gender,'X'), coalesce(u.age_group,'X'), coalesce(u.country,'X')) AS segment_code,
     u.created_at AS registered_at,
     u.is_demo
-FROM pg_catalog.movies.auth.users u;
+FROM pg_catalog.auth.users u;
 
 INSERT OVERWRITE dim_date
 SELECT
@@ -146,7 +146,7 @@ SELECT
     d.week_of_year,
     d.is_weekend,
     coalesce(d.is_holiday, FALSE) AS is_holiday
-FROM pg_catalog.movies.content.date_dimension d;
+FROM pg_catalog.content.date_dimension d;
 
 -- ============================================================
 -- 4. Регулярная синхронизация — нативный SUBMIT TASK
@@ -154,6 +154,7 @@ FROM pg_catalog.movies.content.date_dimension d;
 --    необходимости запускает руками: EXECUTE TASK sync_dim_users; ...
 -- ============================================================
 
+DROP TASK IF EXISTS sync_dim_films;
 SUBMIT TASK sync_dim_films SCHEDULE EVERY (INTERVAL 1 HOUR)
 AS INSERT OVERWRITE dim_films
 SELECT
@@ -165,12 +166,13 @@ SELECT
     f.creation_date IS NOT NULL AND f.creation_date > date_sub(current_date(), INTERVAL 30 DAY) AS is_new,
     (
         SELECT array_agg(g.name)
-        FROM pg_catalog.movies.content.genre_film_work gfw
-        JOIN pg_catalog.movies.content.genre g ON g.id = gfw.genre_id
+        FROM pg_catalog.content.genre_film_work gfw
+        JOIN pg_catalog.content.genre g ON g.id = gfw.genre_id
         WHERE gfw.film_work_id = f.id
     ) AS genres
-FROM pg_catalog.movies.content.film_work f;
+FROM pg_catalog.content.film_work f;
 
+DROP TASK IF EXISTS sync_dim_users;
 SUBMIT TASK sync_dim_users SCHEDULE EVERY (INTERVAL 1 HOUR)
 AS INSERT OVERWRITE dim_users
 SELECT
@@ -181,24 +183,26 @@ SELECT
     concat_ws('_', coalesce(u.gender,'X'), coalesce(u.age_group,'X'), coalesce(u.country,'X')) AS segment_code,
     u.created_at AS registered_at,
     u.is_demo
-FROM pg_catalog.movies.auth.users u;
+FROM pg_catalog.auth.users u;
 
+DROP TASK IF EXISTS sync_dim_genres;
 SUBMIT TASK sync_dim_genres SCHEDULE EVERY (INTERVAL 1 HOUR)
 AS INSERT OVERWRITE dim_genres
 SELECT
     CAST(id AS VARCHAR(36)) AS genre_id,
     name
-FROM pg_catalog.movies.content.genre;
+FROM pg_catalog.content.genre;
 
 -- dim_date растёт ровно на одну строку в сутки — отдельный SUBMIT TASK
 -- (без расписания) для ручного запуска через EXECUTE TASK sync_dim_date.
+DROP TASK IF EXISTS sync_dim_date;
 SUBMIT TASK sync_dim_date
 AS INSERT OVERWRITE dim_date
 SELECT
     d.`date`,
     d.year, d.quarter, d.month, d.day, d.day_of_week, d.week_of_year,
     d.is_weekend, coalesce(d.is_holiday, FALSE)
-FROM pg_catalog.movies.content.date_dimension d;
+FROM pg_catalog.content.date_dimension d;
 
 -- ============================================================
 -- 5. Materialized views (async refresh — пересчитываются автоматически
@@ -234,7 +238,7 @@ WITH user_genre_views AS (
         count(*) AS views
     FROM ugc_analytics.user_events e
     JOIN ugc_analytics.dim_films f ON f.film_id = e.film_id
-    LATERAL VIEW explode(f.genres) t AS g
+    CROSS JOIN unnest(f.genres) AS t(g)
     WHERE e.event_type = 'view'
       AND e.client_time > date_sub(now(), INTERVAL 30 DAY)
     GROUP BY e.user_id, g
@@ -309,5 +313,8 @@ GROUP BY date(e.client_time), e.film_id;
 CREATE USER IF NOT EXISTS 'alert_reader'@'%' IDENTIFIED BY 'alert_reader';
 CREATE ROLE IF NOT EXISTS alert_reader;
 GRANT SELECT ON ALL TABLES IN DATABASE ugc_analytics TO ROLE alert_reader;
+-- В StarRocks materialized views — отдельный объект привилегий: GRANT ... ON
+-- ALL TABLES их НЕ покрывает, а правила alerting-engine читают именно mv_*.
+GRANT SELECT ON ALL MATERIALIZED VIEWS IN DATABASE ugc_analytics TO ROLE alert_reader;
 GRANT alert_reader TO 'alert_reader'@'%';
 SET DEFAULT ROLE alert_reader TO 'alert_reader'@'%';

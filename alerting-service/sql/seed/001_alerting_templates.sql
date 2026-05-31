@@ -13,7 +13,7 @@ SELECT notifications.adm_upsert_template(
     p_body_template := $body$Привет, {{ user.first_name | default(user.login) }}!
 
 Вы давно не смотрели фильмы у нас. Возможно, вам понравится что-то новое из ваших любимых жанров:
-{% if context.top_genres %}{{ context.top_genres | join(', ') }}{% else %}подборка специально для вас{% endif %}.
+{% if params.top_genres is defined and params.top_genres %}{{ params.top_genres | join(', ') }}{% else %}подборка специально для вас{% endif %}.
 
 Перейдите в каталог и выберите что-нибудь по душе.
 
@@ -33,7 +33,7 @@ SELECT notifications.adm_upsert_template(
 
 В вашем сегменте сейчас многие смотрят что-то новое. Мы подобрали для вас
 похожий релиз, который ещё не успели посмотреть:
-  https://movies.local/films/{{ context.trending_film_id }}
+  https://movies.local/films/{{ params.trending_film_id | default('') }}
 
 — Команда Movies
 $body$,
@@ -49,9 +49,9 @@ SELECT notifications.adm_upsert_template(
     p_subject_template := 'Что посмотреть на выходных',
     p_body_template := $body$Привет, {{ user.first_name | default(user.login) }}!
 
-На этих выходных пользователи активно смотрят: {{ context.film_title | default('подборка по тренду') }}.
+На этих выходных пользователи активно смотрят: {{ params.film_title | default('подборка по тренду') }}.
 Присоединяйтесь:
-  https://movies.local/films/{{ context.film_id }}
+  https://movies.local/films/{{ params.film_id | default('') }}
 
 — Команда Movies
 $body$,
