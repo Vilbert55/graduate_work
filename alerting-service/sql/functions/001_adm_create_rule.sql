@@ -25,18 +25,11 @@ AS $$
 DECLARE
     v_rule_id UUID;
 BEGIN
-    IF p_channel NOT IN ('email', 'ws') THEN
-        RAISE EXCEPTION 'invalid_channel: %', p_channel;
-    END IF;
+    PERFORM alerting._check_channel(p_channel);
+    PERFORM alerting._check_cron(p_cron);
 
     IF p_max_users IS NULL OR p_max_users <= 0 THEN
         RAISE EXCEPTION 'invalid_max_users: must be > 0';
-    END IF;
-
-    -- Грубая проверка cron: 5 полей, разделённых пробелами.
-    -- Полная валидация cron — задача движка (croniter) на неделе 3.
-    IF p_cron !~ '^\S+\s+\S+\s+\S+\s+\S+\s+\S+$' THEN
-        RAISE EXCEPTION 'invalid_cron: %', p_cron;
     END IF;
 
     -- Проверяем существование активного шаблона в notifications.

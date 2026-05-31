@@ -1,7 +1,9 @@
 """Подключение к StarRocks по MySQL-протоколу.
 
-На неделе 2 — только заглушка. Полноценный движок (выполнение SQL правила,
-проверка тайм-аута, парсинг колонок user_id/context) — задача недели 3.
+Короткоживущее соединение под ролью alert_reader (только SELECT на
+ugc_analytics). Выдаётся как async-контекст-менеджер; executor открывает
+его на время выполнения SQL правила и закрывает сразу после. Тайм-аут
+запроса и парсинг колонки user_id — на стороне services.executor.
 """
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager

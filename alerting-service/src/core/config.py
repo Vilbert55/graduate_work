@@ -12,7 +12,6 @@ class Settings(BaseSettings):
     )
 
     # Общие
-    project_name: str = Field("Alerting Service", alias="PROJECT_NAME")
     log_level: str = Field("INFO", alias="ALERTING_LOG_LEVEL")
 
     # Postgres (общая БД проекта; схема alerting)
@@ -35,7 +34,6 @@ class Settings(BaseSettings):
     # Параметры движка
     rules_refresh_interval_sec: int = 60     # как часто перечитывать t_rules
     starrocks_query_timeout_sec: int = 30    # тайм-аут SQL-правила
-    rule_max_users_default: int = 50000      # потолок выборки по умолчанию
 
     @property
     def database_url(self) -> str:

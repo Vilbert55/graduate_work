@@ -99,7 +99,7 @@ def _asyncpg_dsn() -> str:
 
 
 async def _handle_trigger_payload(payload: str) -> None:
-    """Parsing 'trigger:{rule_id}:{run_id}' или 'dryrun:{rule_id}:{run_id}'."""
+    """Разбор пейлоада 'trigger:{rule_id}:{run_id}' или 'dryrun:{rule_id}:{run_id}'."""
     try:
         kind, rule_raw, run_raw = payload.split(":", 2)
         rule_id = uuid.UUID(rule_raw)

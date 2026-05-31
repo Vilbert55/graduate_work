@@ -2,6 +2,12 @@
 
 Соглашение: таблицы (t_*) меняются ТОЛЬКО через alerting.adm_*-функции,
 поэтому ORM-классы здесь используются только для SELECT.
+
+В рантайме реально читается только Rule (движком, при синхронизации jobs).
+Run и DispatchHistory сейчас не используются кодом — executor пишет в t_runs
+через raw text(), а t_dispatch_history пока не пишется вовсе. Они оставлены
+ради полноты Base.metadata: alembic --autogenerate сверяется с ней, и без них
+сгенерировал бы DROP этих таблиц. Удалять до перехода на ORM-запись нельзя.
 """
 import uuid
 from datetime import UTC, datetime

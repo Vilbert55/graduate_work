@@ -13,22 +13,8 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = pg_catalog, alerting
 AS $$
-DECLARE
-    v_run_id UUID;
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM alerting.t_rules
-                    WHERE id = p_rule_id AND is_deleted = FALSE) THEN
-        RAISE EXCEPTION 'rule_not_found: %', p_rule_id;
-    END IF;
-
-    INSERT INTO alerting.t_runs(rule_id, status)
-    VALUES (p_rule_id, 'running')
-    RETURNING id INTO v_run_id;
-
-    PERFORM pg_notify('alerting_trigger',
-        'dryrun:' || p_rule_id::text || ':' || v_run_id::text);
-
-    RETURN v_run_id;
+    RETURN alerting._enqueue_rule_run(p_rule_id, 'dryrun');
 END;
 $$;
 

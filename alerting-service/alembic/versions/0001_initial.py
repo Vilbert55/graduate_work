@@ -164,6 +164,10 @@ def downgrade() -> None:
         "DROP FUNCTION IF EXISTS alerting.adm_create_rule(TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, JSONB, INTEGER, TEXT, TEXT)"
     )
 
+    op.execute("DROP FUNCTION IF EXISTS alerting._enqueue_rule_run(UUID, TEXT)")
+    op.execute("DROP FUNCTION IF EXISTS alerting._check_cron(TEXT)")
+    op.execute("DROP FUNCTION IF EXISTS alerting._check_channel(TEXT)")
+
     op.execute("REVOKE ALL ON SCHEMA alerting FROM alerting_admin")
     op.execute("DROP ROLE IF EXISTS alerting_admin")
 

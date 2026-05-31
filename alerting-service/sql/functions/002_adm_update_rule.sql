@@ -15,16 +15,11 @@ SECURITY DEFINER
 SET search_path = pg_catalog, alerting, notifications
 AS $$
 BEGIN
-    IF p_channel IS NOT NULL AND p_channel NOT IN ('email', 'ws') THEN
-        RAISE EXCEPTION 'invalid_channel: %', p_channel;
-    END IF;
+    PERFORM alerting._check_channel(p_channel);
+    PERFORM alerting._check_cron(p_cron);
 
     IF p_max_users IS NOT NULL AND p_max_users <= 0 THEN
         RAISE EXCEPTION 'invalid_max_users: must be > 0';
-    END IF;
-
-    IF p_cron IS NOT NULL AND p_cron !~ '^\S+\s+\S+\s+\S+\s+\S+\s+\S+$' THEN
-        RAISE EXCEPTION 'invalid_cron: %', p_cron;
     END IF;
 
     IF p_template_code IS NOT NULL AND NOT EXISTS (

@@ -21,7 +21,6 @@ class Settings(BaseSettings):
     # Kafka (для trigger-events)
     kafka_bootstrap: str = Field("movies-kafka:9092", alias="DEMO_KAFKA_BOOTSTRAP")
     kafka_topic_views: str = "views"
-    kafka_topic_recommendations: str = "recommendations"
 
     @property
     def database_dsn(self) -> str:
