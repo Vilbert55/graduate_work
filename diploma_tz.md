@@ -198,7 +198,7 @@ Mindbox, Sendsay, RetentionRocket (Россия), Customer.io, Braze, Klaviyo, B
 -- 1. Тестируем выборку в StarRocks (DBeaver)
 SELECT
     a.user_id,
-    jsonb_build_object('top_genres', t.top_genres) AS context
+    to_json(named_struct('top_genres', t.top_genres)) AS context
 FROM ugc_analytics.mv_user_activity a
 JOIN ugc_analytics.mv_user_top_genres t USING (user_id)
 WHERE a.was_active_last_month = TRUE
@@ -367,7 +367,7 @@ already_seen AS (
 )
 SELECT
   u.user_id,
-  jsonb_build_object('trending_film_id', t.film_id, 'segment', t.segment) AS context
+  to_json(named_struct('trending_film_id', t.film_id, 'segment', t.segment)) AS context
 FROM ugc_analytics.dim_users u
 JOIN trending t ON t.segment = u.segment_code
 LEFT JOIN already_seen a ON a.user_id = u.user_id AND a.film_id = t.film_id
@@ -392,7 +392,7 @@ WHERE a.user_id IS NULL
 ```sql
 SELECT
   user_id,
-  jsonb_build_object('film_id', m.film_id) AS context
+  to_json(named_struct('film_id', m.film_id)) AS context
 FROM ugc_analytics.mv_weekend_film_activity m
 JOIN ugc_analytics.user_events e ON e.film_id = m.film_id
   AND e.event_type = 'view'

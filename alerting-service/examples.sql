@@ -9,7 +9,8 @@
 -- ============================================================
 
 -- USE ugc_analytics;
--- SELECT user_id, json_object('top_genres', top_genres) AS context
+-- SELECT user_id,
+--        to_json(named_struct('top_genres', t.top_genres)) AS context
 -- FROM ugc_analytics.mv_user_activity a
 -- JOIN ugc_analytics.mv_user_top_genres t USING (user_id)
 -- WHERE a.was_active_last_month = TRUE
@@ -23,7 +24,7 @@ SELECT alerting.adm_create_rule(
     p_description   := 'Возврат угасших активных зрителей',
     p_sql           := $sql$
         SELECT user_id,
-               json_object('top_genres', t.top_genres) AS context
+               to_json(named_struct('top_genres', t.top_genres)) AS context
         FROM ugc_analytics.mv_user_activity a
         JOIN ugc_analytics.mv_user_top_genres t USING (user_id)
         WHERE a.was_active_last_month = TRUE
@@ -73,14 +74,18 @@ SELECT * FROM alerting.v_dispatch ORDER BY sent_at DESC LIMIT 50;
 -- 7. Принудительная синхронизация dim_*-таблиц StarRocks
 --    (для демо: вместо ожидания часового SCHEDULE).
 --    Выполнять под root через MySQL-протокол StarRocks.
+--    NB: StarRocks 4.0.8 НЕ поддерживает `EXECUTE TASK <name>` —
+--    для ручного прогона повторяем тот же INSERT OVERWRITE, что и в SUBMIT TASK.
 -- ============================================================
 -- USE ugc_analytics;
--- EXECUTE TASK sync_dim_users;
--- EXECUTE TASK sync_dim_films;
--- EXECUTE TASK sync_dim_genres;
--- EXECUTE TASK sync_dim_date;
--- REFRESH MATERIALIZED VIEW mv_user_activity;
--- REFRESH MATERIALIZED VIEW mv_user_top_genres;
--- REFRESH MATERIALIZED VIEW mv_segment_film_activity;
--- REFRESH MATERIALIZED VIEW mv_film_watch_hourly;
--- REFRESH MATERIALIZED VIEW mv_weekend_film_activity;
+-- INSERT OVERWRITE dim_users
+-- SELECT CAST(u.id AS VARCHAR(36)), u.gender, u.age_group, u.country,
+--        concat_ws('_', coalesce(u.gender,'X'), coalesce(u.age_group,'X'), coalesce(u.country,'X')),
+--        u.created_at, u.is_demo
+-- FROM pg_catalog.auth.users u;
+-- -- (dim_films / dim_genres / dim_date — аналогично, см. starrocks_dims_init/init.sql)
+-- REFRESH MATERIALIZED VIEW mv_user_activity        WITH SYNC MODE;
+-- REFRESH MATERIALIZED VIEW mv_user_top_genres      WITH SYNC MODE;
+-- REFRESH MATERIALIZED VIEW mv_segment_film_activity WITH SYNC MODE;
+-- REFRESH MATERIALIZED VIEW mv_film_watch_hourly    WITH SYNC MODE;
+-- REFRESH MATERIALIZED VIEW mv_weekend_film_activity WITH SYNC MODE;
