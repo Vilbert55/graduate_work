@@ -132,7 +132,7 @@ Mindbox, Sendsay, RetentionRocket (Россия), Customer.io, Braze, Klaviyo, B
 
 | Сервис | Что меняется |
 |---|---|
-| **auth-service** | Alembic-миграция в `auth.users`: добавляем nullable-колонки `gender VARCHAR(16)`, `age_group VARCHAR(16)`, `country VARCHAR(2)`, `is_demo BOOLEAN DEFAULT FALSE`. Pydantic-схемы профиля (`/me`, регистрация) расширяются соответствующими полями (`is_demo` — только для внутреннего использования). |
+| **auth-service** | Alembic-миграция в `auth.users`: добавляем nullable-колонки `gender VARCHAR(16)`, `age INTEGER`, `country VARCHAR(2)`, `is_demo BOOLEAN DEFAULT FALSE`. Pydantic-схемы профиля (`/me`, регистрация) расширяются соответствующими полями (`is_demo` — только для внутреннего использования). |
 | **activity-tracker-service** | Новый эндпоинт `POST /ugc/api/v1/events/recommendation` принимает реакции пользователя на письма alerting (поля `rule_code`, `notification_message_id`, `action ∈ {opened, clicked, dismissed}`, опц. `film_id`). Новый Kafka-топик `recommendations`. Замыкает контур «правило → задача → письмо → клик → факт обратно в StarRocks» — аналитик в Superset может построить чарт конверсии собственного правила. |
 | **starrocks_init/init.sql** | Таблица `user_events` переведена с `DUPLICATE KEY(request_id, user_id, event_type)` на **`PRIMARY KEY (request_id, event_type)`** — встроенная дедупликация StarRocks (REPLACE-семантика при конфликте PK). Добавлена Routine Load `recommendations_load` для нового event_type. Добавлены колонки `rule_code`, `notification_message_id`, `action`. |
 
@@ -296,7 +296,7 @@ CREATE INDEX ON alerting.t_dispatch_history (rule_id, user_id, sent_at DESC);
 
 **Dim-таблицы** (синхронизируются раз в час из Postgres через JDBC Catalog + `SUBMIT TASK`):
 - `dim_films(film_id PK, title, type, genres ARRAY<STRING>, is_new BOOLEAN, creation_date, rating)` — `is_new` вычисляется по `creation_date > now() - INTERVAL 30 DAY`.
-- `dim_users(user_id PK, gender, age_group, country, segment_code, registered_at, is_demo)` — `segment_code` производный (`concat_ws('_', gender, age_group, country)`, напр. `female_25-34_RU`).
+- `dim_users(user_id PK, gender, age, country, segment_code, registered_at, is_demo)` — `segment_code` производный (`gender_ageband_country`, где возрастная полоса выводится из целочисленного `age` через `CASE WHEN`, напр. `female_25-34_RU`).
 - `dim_genres(genre_id PK, name)`
 - `dim_date(date PK, year, quarter, month, day, day_of_week, week_of_year, is_weekend, is_holiday)` — задействует ранее неиспользуемый `content.date_dimension` из `admin-panel-service`; синхронизируется одноразовым `SUBMIT TASK sync_dim_date` (растёт ровно на одну строку в сутки). Применяется в правилах вида «по выходным», «по пятницам», «в праздничные дни» через join — без дублирования date-арифметики в каждом SQL.
 
@@ -330,7 +330,7 @@ CREATE INDEX ON alerting.t_dispatch_history (rule_id, user_id, sent_at DESC);
 
 Для подготовки и оживления сценариев добавляются две Python-утилиты (могут быть подкомандами одного CLI), запускаются вручную перед демо:
 
-- **`demo-seeder`** — создаёт N юзеров в `auth.users` с заполненными `gender / age_group / country` и `is_demo = TRUE`. Фильмы не создаёт — берутся существующие из фикстур `content.film_work`. Идемпотентен: повторный запуск удаляет юзеров с `is_demo = TRUE` и создаёт заново.
+- **`demo-seeder`** — создаёт N юзеров в `auth.users` с заполненными `gender / age / country` и `is_demo = TRUE` (возраст сэмплируется целым числом внутри полосы демо-сегмента). Фильмы не создаёт — берутся существующие из фикстур `content.film_work`. Идемпотентен: повторный запуск удаляет юзеров с `is_demo = TRUE` и создаёт заново.
 - **`event-trigger`** — генерирует события в Kafka только для демо-юзеров, подставляя реальные `film_id` из существующих фильмов (отбор по жанру/рейтингу под сценарий). Параметры (сценарий, окно времени, количество событий) задаются ключами командной строки.
 
 ### 10.2 Сценарий A (основной) - Возврат пользователя (win-back)

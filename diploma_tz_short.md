@@ -32,7 +32,7 @@
 
 | Сервис | Изменение | Цель |
 |---|---|---|
-| `auth-service` | Миграция: добавить в `auth.users` nullable-колонки `gender / age_group / country / is_demo` + расширить схему профиля. | Чтобы у справочника `dim_users` были поля сегментации. |
+| `auth-service` | Миграция: добавить в `auth.users` nullable-колонки `gender / age / country / is_demo` + расширить схему профиля. | Чтобы у справочника `dim_users` были поля сегментации. |
 | `activity-tracker-service` | Новый event_type `recommendation` (`POST /ugc/api/v1/events/recommendation`, Kafka-топик `recommendations`, поля `rule_code`/`notification_message_id`/`action`). | Замыкает контур «правило → письмо → клик → факт в StarRocks». Аналитик в Superset считает конверсию своих собственных правил. |
 | `starrocks_init/init.sql` | `user_events` — переведена в **Primary Key table** по `(request_id, event_type)` для встроенной дедупликации через REPLACE-семантику. Добавлена Routine Load `recommendations_load`. | Защита от дублей при ретраях Kafka/Routine Load без работы на стороне правил. |
 

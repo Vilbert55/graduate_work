@@ -79,8 +79,13 @@ SELECT * FROM alerting.v_dispatch ORDER BY sent_at DESC LIMIT 50;
 -- ============================================================
 -- USE ugc_analytics;
 -- INSERT OVERWRITE dim_users
--- SELECT CAST(u.id AS VARCHAR(36)), u.gender, u.age_group, u.country,
---        concat_ws('_', coalesce(u.gender,'X'), coalesce(u.age_group,'X'), coalesce(u.country,'X')),
+-- SELECT CAST(u.id AS VARCHAR(36)), u.gender, u.age, u.country,
+--        concat_ws('_', coalesce(u.gender,'X'),
+--            CASE WHEN u.age IS NULL THEN 'X'
+--                 WHEN u.age < 18  THEN '0-17'  WHEN u.age <= 24 THEN '18-24'
+--                 WHEN u.age <= 34 THEN '25-34' WHEN u.age <= 44 THEN '35-44'
+--                 WHEN u.age <= 54 THEN '45-54' ELSE '55+' END,
+--            coalesce(u.country,'X')),
 --        u.created_at, u.is_demo
 -- FROM pg_catalog.auth.users u;
 -- -- (dim_films / dim_genres / dim_date — аналогично, см. starrocks_dims_init/init.sql)

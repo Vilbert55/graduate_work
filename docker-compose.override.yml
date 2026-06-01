@@ -87,3 +87,8 @@ services:
       extra_hosts:
         - "pypi.org:151.101.0.223"
         - "files.pythonhosted.org:151.101.0.223"
+  movies-demo-tools:
+    build:
+      extra_hosts:
+        - "pypi.org:151.101.0.223"
+        - "files.pythonhosted.org:151.101.0.223"

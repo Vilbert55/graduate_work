@@ -26,6 +26,7 @@ import typer
 from kafka import KafkaProducer
 
 from src.config import settings
+from src.segments import AGE_BANDS, band_range
 
 
 SCENARIOS = ("winback", "segment_trend", "weekend_burst")
@@ -43,15 +44,18 @@ def _make_producer() -> KafkaProducer:
 
 
 async def _fetch_demo_users(conn: asyncpg.Connection, segment: str | None, limit: int) -> list[asyncpg.Record]:
-    base_sql = "SELECT id::text AS user_id, gender, age_group, country FROM auth.users WHERE is_demo"
+    base_sql = "SELECT id::text AS user_id, gender, age, country FROM auth.users WHERE is_demo"
     if segment:
         try:
             g, a, c = segment.split("_")
         except ValueError as exc:
             raise typer.BadParameter("--segment expected 'gender_age_country'") from exc
+        if a not in AGE_BANDS:
+            raise typer.BadParameter(f"--segment age band must be one of: {', '.join(AGE_BANDS)}")
+        lo, hi = band_range(a)
         return await conn.fetch(
-            base_sql + " AND gender=$1 AND age_group=$2 AND country=$3 LIMIT $4",
-            g, a, c, limit,
+            base_sql + " AND gender=$1 AND age BETWEEN $2 AND $3 AND country=$4 LIMIT $5",
+            g, lo, hi, c, limit,
         )
     return await conn.fetch(base_sql + " ORDER BY random() LIMIT $1", limit)
 

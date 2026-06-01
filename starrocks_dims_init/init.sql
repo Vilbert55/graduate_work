@@ -53,9 +53,9 @@ PROPERTIES (
 CREATE TABLE IF NOT EXISTS dim_users (
     user_id        VARCHAR(36)  NOT NULL,
     gender         VARCHAR(16)  NULL,
-    age_group      VARCHAR(16)  NULL,
+    age            INT          NULL,
     country        VARCHAR(2)   NULL,
-    segment_code   VARCHAR(64)  NULL COMMENT 'gender_age_country, напр. female_25-34_RU',
+    segment_code   VARCHAR(64)  NULL COMMENT 'gender_ageband_country, напр. female_25-34_RU (полоса из age)',
     registered_at  DATETIME     NULL,
     is_demo        BOOLEAN      NULL
 )
@@ -128,9 +128,22 @@ INSERT OVERWRITE dim_users
 SELECT
     CAST(u.id AS VARCHAR(36)) AS user_id,
     u.gender,
-    u.age_group,
+    u.age,
     u.country,
-    concat_ws('_', coalesce(u.gender,'X'), coalesce(u.age_group,'X'), coalesce(u.country,'X')) AS segment_code,
+    -- segment_code: возрастную полосу выводим из целочисленного u.age
+    -- (границы синхронны demo-tools/src/segments.py::AGE_BANDS)
+    concat_ws('_',
+        coalesce(u.gender,'X'),
+        CASE
+            WHEN u.age IS NULL THEN 'X'
+            WHEN u.age < 18      THEN '0-17'
+            WHEN u.age <= 24     THEN '18-24'
+            WHEN u.age <= 34     THEN '25-34'
+            WHEN u.age <= 44     THEN '35-44'
+            WHEN u.age <= 54     THEN '45-54'
+            ELSE '55+'
+        END,
+        coalesce(u.country,'X')) AS segment_code,
     u.created_at AS registered_at,
     u.is_demo
 FROM pg_catalog.auth.users u;
@@ -178,9 +191,22 @@ AS INSERT OVERWRITE dim_users
 SELECT
     CAST(u.id AS VARCHAR(36)) AS user_id,
     u.gender,
-    u.age_group,
+    u.age,
     u.country,
-    concat_ws('_', coalesce(u.gender,'X'), coalesce(u.age_group,'X'), coalesce(u.country,'X')) AS segment_code,
+    -- segment_code: возрастную полосу выводим из целочисленного u.age
+    -- (границы синхронны demo-tools/src/segments.py::AGE_BANDS)
+    concat_ws('_',
+        coalesce(u.gender,'X'),
+        CASE
+            WHEN u.age IS NULL THEN 'X'
+            WHEN u.age < 18      THEN '0-17'
+            WHEN u.age <= 24     THEN '18-24'
+            WHEN u.age <= 34     THEN '25-34'
+            WHEN u.age <= 44     THEN '35-44'
+            WHEN u.age <= 54     THEN '45-54'
+            ELSE '55+'
+        END,
+        coalesce(u.country,'X')) AS segment_code,
     u.created_at AS registered_at,
     u.is_demo
 FROM pg_catalog.auth.users u;

@@ -1,6 +1,6 @@
 """add segmentation fields to auth.users
 
-Добавляет в auth.users поля gender / age_group / country / is_demo —
+Добавляет в auth.users поля gender / age / country / is_demo —
 используются при построении dim_users в StarRocks (alerting-service)
 и сегментации правил рассылки.
 
@@ -29,7 +29,7 @@ def upgrade() -> None:
     )
     op.add_column(
         'users',
-        sa.Column('age_group', sa.String(length=16), nullable=True),
+        sa.Column('age', sa.Integer(), nullable=True),
         schema='auth',
     )
     op.add_column(
@@ -52,5 +52,5 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_column('users', 'is_demo', schema='auth')
     op.drop_column('users', 'country', schema='auth')
-    op.drop_column('users', 'age_group', schema='auth')
+    op.drop_column('users', 'age', schema='auth')
     op.drop_column('users', 'gender', schema='auth')

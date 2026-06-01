@@ -13,7 +13,7 @@ JOIN alerting.t_rules r ON r.id = d.rule_id;
 
 COMMENT ON VIEW alerting.v_dispatch IS
 'Журнал отправок: какому пользователю и каким правилом было отправлено
-уведомление. Используется для разбора жалоб. Доступно роли alerting_admin.';
+уведомление. Доступно роли alerting_admin.';
 
 -- @statement
 

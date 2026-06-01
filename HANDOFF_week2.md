@@ -296,7 +296,7 @@ Exited(0)).
 
 **Что точно работает (поднималось):**
 - Postgres + schemas auth, notifications, alerting.
-- Auth-миграция новой колонки `is_demo`/`gender`/`age_group`/`country`
+- Auth-миграция новой колонки `is_demo`/`gender`/`age`/`country`
   применилась.
 - Alerting-миграция применилась (`t_rules`, `t_runs`, `t_dispatch_history`,
   все adm_*-функции, v_* представления, роль alerting_admin, шаблоны

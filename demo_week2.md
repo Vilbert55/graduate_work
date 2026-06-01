@@ -53,13 +53,8 @@ docker exec movies-starrocks mysql -uroot -P9030 -h127.0.0.1 -e \
 ```bash
 docker compose --profile demo run --rm movies-demo-tools seed-users --count 50
 ```
-Создаёт 50 юзеров в `auth.users` с `is_demo=TRUE`, заполненными `gender/age_group/country` и `email = <login>@demo.local`. Идемпотентно (повтор удалит прошлых демо-юзеров).
+Создаёт 50 юзеров в `auth.users` с `is_demo=TRUE`, заполненными `gender/age/country` и `email = <login>@demo.local`. Идемпотентно (повтор удалит прошлых демо-юзеров).
 
-**Проверка (DBeaver, Postgres):**
-```sql
-SELECT count(*) FROM auth.users WHERE is_demo;          -- 50
-SELECT login, email, gender, age_group FROM auth.users WHERE is_demo LIMIT 5;
-```
 
 ---
 
@@ -88,9 +83,15 @@ SELECT count(*) FROM ugc_analytics.user_events;   -- выросло (сотни 
 ```sql
 USE ugc_analytics;
 -- dim_users — подтянуть свежих демо-юзеров из Postgres
+-- (segment_code: возрастная полоса выводится из целочисленного u.age)
 INSERT OVERWRITE dim_users
-SELECT CAST(u.id AS VARCHAR(36)), u.gender, u.age_group, u.country,
-       concat_ws('_', coalesce(u.gender,'X'), coalesce(u.age_group,'X'), coalesce(u.country,'X')),
+SELECT CAST(u.id AS VARCHAR(36)), u.gender, u.age, u.country,
+       concat_ws('_', coalesce(u.gender,'X'),
+           CASE WHEN u.age IS NULL THEN 'X'
+                WHEN u.age < 18  THEN '0-17'  WHEN u.age <= 24 THEN '18-24'
+                WHEN u.age <= 34 THEN '25-34' WHEN u.age <= 44 THEN '35-44'
+                WHEN u.age <= 54 THEN '45-54' ELSE '55+' END,
+           coalesce(u.country,'X')),
        u.created_at, u.is_demo
 FROM pg_catalog.auth.users u;
 
@@ -143,7 +144,7 @@ FROM alerting.v_runs ORDER BY started_at DESC LIMIT 1;
 ```
 Ожидаем: `status=success`, `matched_users>0`, **`dispatched_users=0`** (письма НЕ ушли).
 
-> Что показать наставнику: `adm_dry_run_rule` шлёт `pg_notify`, движок (контейнер `movies-alerting-engine`) подхватывает, выполняет SQL в StarRocks, но `adm_create_task` не зовёт.
+> Видно что здесь: `adm_dry_run_rule` шлёт `pg_notify`, движок (контейнер `movies-alerting-engine`) подхватывает, выполняет SQL в StarRocks, но `adm_create_task` не зовёт.
 
 ---
 

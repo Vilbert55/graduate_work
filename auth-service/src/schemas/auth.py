@@ -34,11 +34,12 @@ class UserCreate(BaseModel):
         description="Пол (male/female/other) — нужен для сегментации в alerting-service",
         example="male",
     )
-    age_group: str | None = Field(
+    age: int | None = Field(
         None,
-        max_length=16,
-        description="Возрастная группа (18-24/25-34/35-44/45-54/55+)",
-        example="25-34",
+        ge=0,
+        le=150,
+        description="Возраст (полных лет) — нужен для сегментации в alerting-service",
+        example=27,
     )
     country: str | None = Field(
         None,
@@ -56,7 +57,7 @@ class UserCreate(BaseModel):
                 "first_name": "John",
                 "last_name": "Doe",
                 "gender": "male",
-                "age_group": "25-34",
+                "age": 27,
                 "country": "RU",
             },
         }

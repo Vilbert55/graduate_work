@@ -2,16 +2,15 @@
 
 **Период:** 2026-05-25 → 2026-05-31. Сегодня — 2026-05-29.
 
-Записка фиксирует, что именно сделано на 2-й неделе, какие компромиссы
-приняты и что осознанно отложено на 3-ю неделю.
+Что сделано на 2-й неделе, какие компромиссы приняты, что осознанно отложено на 3-ю неделю.
 
 ---
 
-## 1. Реализовано на неделе 2
+## 1. На неделе 2
 
 | Блок | Результат |
 |---|---|
-| **auth-service** | Alembic-миграция `a3c1d9f8b2e0`: nullable `gender / age_group / country` + `is_demo BOOLEAN DEFAULT FALSE` в `auth.users`. Pydantic-схемы регистрации/профиля расширены этими полями (кроме `is_demo` — он не принимается извне). |
+| **auth-service** | Alembic-миграция `a3c1d9f8b2e0`: nullable `gender / age (INTEGER) / country` + `is_demo BOOLEAN DEFAULT FALSE` в `auth.users`. Pydantic-схемы регистрации/профиля расширены этими полями (кроме `is_demo` — он не принимается извне). |
 | **activity-tracker-service** | Новый эндпоинт `POST /ugc/api/v1/events/recommendation` + Kafka-топик `recommendations`. Замыкает контур «правило → письмо → клик → факт обратно в StarRocks». |
 | **starrocks_init/init.sql** | `user_events` переведена в **Primary Key table** по `(request_id, event_type)`. Дедупликация теперь обеспечивается транспортом (REPLACE-семантика StarRocks), а не запросами в правилах. Добавлен Routine Load `recommendations_load`. |
 | **starrocks_dims_init/** | Новый init-контейнер: JDBC Catalog `pg_catalog` поверх Postgres, 4 dim-таблицы (включая `dim_date`), 5 Materialized views (включая `mv_weekend_film_activity`), роль и пользователь `alert_reader`. |
@@ -22,7 +21,7 @@
 
 ---
 
-## 2. Явно отложено на неделю 3
+## 2. Отложено на неделю 3
 
 | Что | Почему откладываем |
 |---|---|

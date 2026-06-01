@@ -643,7 +643,7 @@ services:
       movies-db:
         condition: service_healthy
       # auth-миграция должна добавить колонки сегментации до того, как
-      # JDBC Catalog SELECT-нет u.gender / u.age_group / u.country / u.is_demo.
+      # JDBC Catalog SELECT-нет u.gender / u.age / u.country / u.is_demo.
       movies-auth-service:
         condition: service_healthy
 

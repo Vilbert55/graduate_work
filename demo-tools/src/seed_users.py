@@ -17,19 +17,23 @@ from bcrypt import gensalt, hashpw
 from faker import Faker
 
 from src.config import settings
+from src.segments import AGE_BANDS, band_range
 
 
-# Сегменты для распределения: список совместимых пар (gender, age_group, country).
-# Расширяемо; для демо хватит 6 базовых сегментов.
+# Все демо-юзеры создаются с одним фиксированным паролем: это тестовые
+# аккаунты, единый пароль упрощает демо (вход в Postman на шаге 9.1).
+DEMO_PASSWORD = "demo_password"
+
+# Сегменты для распределения
 DEFAULT_SEGMENTS = list(product(
     ["female", "male"],
-    ["18-24", "25-34", "35-44"],
+    list(AGE_BANDS),
     ["RU"],
 ))
 
 
 def _make_login(idx: int, segment: tuple[str, str, str]) -> str:
-    """Логин вида demo_female_25-34_RU_0007."""
+    """Логин вида demo_female_25-34_RU_0007 (в логине — полоса, не точный возраст)."""
     g, a, c = segment
     return f"demo_{g}_{a}_{c}_{idx:04d}"
 
@@ -39,7 +43,7 @@ def _hash_password(password: str) -> str:
     return hashpw(password.encode("utf-8"), gensalt()).decode("utf-8")
 
 
-async def _seed(count: int, segment_filter: str | None, password: str) -> int:
+async def _seed(count: int, segment_filter: str | None) -> int:
     if count <= 0:
         return 0
 
@@ -51,11 +55,15 @@ async def _seed(count: int, segment_filter: str | None, password: str) -> int:
             raise typer.BadParameter(
                 "--segment expected 'gender_age_country', e.g. 'female_25-34_RU'",
             ) from None
+        if a not in AGE_BANDS:
+            raise typer.BadParameter(
+                f"--segment age band must be one of: {', '.join(AGE_BANDS)}",
+            )
     else:
         segments = DEFAULT_SEGMENTS
 
     faker = Faker()
-    pwd_hash = _hash_password(password)
+    pwd_hash = _hash_password(DEMO_PASSWORD)
 
     conn = await asyncpg.connect(dsn=settings.database_dsn)
     try:
@@ -71,6 +79,7 @@ async def _seed(count: int, segment_filter: str | None, password: str) -> int:
         for i in range(count):
             segment = random.choice(segments)
             login = _make_login(i, segment)
+            lo, hi = band_range(segment[1])
             rows.append((
                 uuid.uuid4(),
                 login,
@@ -79,7 +88,7 @@ async def _seed(count: int, segment_filter: str | None, password: str) -> int:
                 faker.first_name_female() if segment[0] == "female" else faker.first_name_male(),
                 faker.last_name(),
                 segment[0],
-                segment[1],
+                random.randint(lo, hi),  # конкретный возраст внутри полосы сегмента
                 segment[2],
             ))
 
@@ -87,7 +96,7 @@ async def _seed(count: int, segment_filter: str | None, password: str) -> int:
             """
             INSERT INTO auth.users(
                 id, login, email, password, first_name, last_name,
-                gender, age_group, country, is_demo, created_at
+                gender, age, country, is_demo, created_at
             ) VALUES (
                 $1, $2, $3, $4, $5, $6,
                 $7, $8, $9, TRUE, (now() AT TIME ZONE 'utc')
@@ -107,9 +116,10 @@ def seed_users_cmd(
         None, "--segment", "-s",
         help="Ограничить одним сегментом 'gender_age_country', напр. female_25-34_RU.",
     ),
-    password: str = typer.Option("demo_password", "--password",
-                                 help="Общий пароль для всех демо-юзеров."),
 ) -> None:
-    """Создать count демо-юзеров (идемпотентно: предыдущих с is_demo=TRUE удалит)."""
-    created = asyncio.run(_seed(count, segment, password))
+    """Создать count демо-юзеров (идемпотентно: предыдущих с is_demo=TRUE удалит).
+
+    Пароль у всех демо-юзеров фиксированный — DEMO_PASSWORD ('demo_password').
+    """
+    created = asyncio.run(_seed(count, segment))
     typer.echo(f"OK: deleted previous is_demo users, created {created} new demo users")

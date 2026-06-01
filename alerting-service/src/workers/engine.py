@@ -116,7 +116,7 @@ async def _handle_trigger_payload(payload: str) -> None:
 
 
 async def _listen_for_triggers(stop_event: asyncio.Event) -> None:
-    """LISTEN на канале 'alerting_trigger', с авто-переподключением."""
+    """Слушаем канал 'alerting_trigger'"""
     queue: asyncio.Queue[str] = asyncio.Queue()
 
     def _on_notify(_conn, _pid, _channel, payload):

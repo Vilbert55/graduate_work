@@ -27,6 +27,12 @@ docker compose --profile demo run --rm movies-demo-tools \
 повторный запуск удалит всех таких и создаст заново. На реальных пользователей
 команда не повлияет.
 
+## Пароль
+
+У всех демо-пользователей один фиксированный пароль — `demo_password`
+(константа `DEMO_PASSWORD` в `seed_users.py`). Опции его сменить нет: это
+тестовые аккаунты, единый пароль упрощает демо.
+
 ## Структура
 
 ```
@@ -35,8 +41,9 @@ demo-tools/
 ├── Dockerfile
 └── src/
     ├── __init__.py
-    ├── __main__.py         # typer-app: точка входа
+    ├── main.py             # typer-app: точка входа
     ├── config.py
+    ├── segments.py         # границы возрастных полос (общие для seed/trigger)
     ├── seed_users.py       # подкоманда seed-users
     └── trigger_events.py   # подкоманда trigger-events
 ```

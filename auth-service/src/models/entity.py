@@ -1,7 +1,7 @@
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, PrimaryKeyConstraint, String, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, PrimaryKeyConstraint, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -24,7 +24,7 @@ class User(Base):
     # Поля сегментации — нужны для построения dim_users в StarRocks
     # и для правил alerting-service (winback, segment_trend, ...).
     gender = Column(String(16), nullable=True)
-    age_group = Column(String(16), nullable=True)
+    age = Column(Integer, nullable=True)
     country = Column(String(2), nullable=True)
     # is_demo — маркер тестового пользователя, созданного demo-tools.
     # demo-seeder удаляет всех is_demo=TRUE и пересоздаёт — идемпотентность.

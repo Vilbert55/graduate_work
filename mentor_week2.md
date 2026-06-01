@@ -1,4 +1,4 @@
-# Сводка для встречи с наставником — неделя 2
+# Сводка  — неделя 2
 
 Дипломный проект: **closed-loop alerting service для онлайн-кинотеатра** на StarRocks.
 ТЗ — `diploma_tz.md` (полное) / `diploma_tz_short.md` (защита). Аналитическая записка
@@ -66,7 +66,7 @@ seed-users → trigger-events → Kafka → Routine Load → user_events (StarRo
 ### Интеграционные правки в чужих сервисах (не ломая их API)
 | Сервис | Что добавлено |
 |---|---|
-| `auth-service` | Миграция: nullable `gender/age_group/country/is_demo` в `auth.users` (под сегментацию `dim_users`). |
+| `auth-service` | Миграция: nullable `gender/age/country/is_demo` в `auth.users` (под сегментацию `dim_users`). |
 | `activity-tracker-service` | `event_type=recommendation` (`POST /ugc/api/v1/events/recommendation`) + Kafka-топик `recommendations` — замыкает контур «письмо → клик → факт». |
 
 ---

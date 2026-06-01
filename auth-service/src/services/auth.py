@@ -47,7 +47,7 @@ class AuthService:
             first_name=user_data.first_name,
             last_name=user_data.last_name,
             gender=user_data.gender,
-            age_group=user_data.age_group,
+            age=user_data.age,
             country=user_data.country,
         )
         self.db.add(user)
