@@ -35,6 +35,7 @@
 | Авто-разворачивание Superset-дашбордов из YAML/zip | На неделе 2 даны SQL в `superset/README.md`; импорт через `superset import-dashboards` — позже. |
 | Юнит/интеграционные тесты движка (НФТ-6) | На неделе 2 движок — каркас, тестировать нечего. |
 | Подключение alerting-engine к ELK / Glitchtip | JSON-логи в stdout уже пишутся (через `python-json-logger`), Sentry-init работает по env `ALERTING_SENTRY_DSN`. Полноценная проверка end-to-end — на неделе 3. |
+| Наполнение колонок `t_rules.status` / `next_run_at` / `last_validation_error` (+ индекс `ix_t_rules_next_run`) | Схема заведена **авансом** под неделю 3 (валидация SQL-правила → `status='invalid'` + `last_validation_error`; персист расписания → `next_run_at`). На неделе 2 эти поля присутствуют в DDL и видны во вьюхе `v_rules`, но пока всегда `NULL` / `'active'` — кодом не наполняются. Заводим заранее, чтобы не переписывать applied-миграцию `0001_initial` на неделе 3. |
 
 ---
 

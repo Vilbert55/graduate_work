@@ -35,7 +35,10 @@ seed-users → trigger-events → Kafka → Routine Load → user_events
 cd ~/praktikum/graduate_work
 
 # Все init/migrations завершились с кодом 0?
-docker compose ps -a | grep -E '(init|migrations)' | grep -v 'Exited (0)' \
+# (фильтруем по колонке имени — иначе grep ловит подстроку "init"
+#  в команде запуска movies-superset и даёт ложную тревогу)
+docker compose ps -a --format '{{.Name}}\t{{.Status}}' \
+  | grep -E '^[^[:space:]]*(init|migrations)' | grep -v 'Exited (0)' \
   && echo "ВНИМАНИЕ: что-то упало" || echo "OK: все init-контейнеры отработали"
 
 # Routine Load жив (4 потока в RUNNING)?
