@@ -1,6 +1,6 @@
 """End-to-end исполнение правила: SQL в StarRocks → задача в notifications.
 
-Минимальная реализация недели 2. Сознательные упрощения (доделать на неделе 3):
+Минимальная реализация недели 2 (доделать на неделе 3):
   - frequency_cap из t_rules.frequency_cap не применяется (нет проверки
     t_dispatch_history) — лимит уведомлений ляжет на неделю 3.
   - Per-user context (колонка context из SQL правила) игнорируется.
@@ -16,7 +16,7 @@
   - Идемпотентный вызов notifications.adm_create_task с ключом
     alerting:{rule_id}:{run_id} — повторный запуск того же run-а
     вернёт тот же task без дубля письма.
-  - Атомарная запись t_runs (running → success/failed) + apdate
+  - Атомарная запись t_runs (running → success/failed) + update
     t_rules.last_run_at.
 """
 from __future__ import annotations
@@ -55,7 +55,7 @@ async def execute_rule(rule_id: uuid.UUID, run_id: uuid.UUID | None = None, *, d
                  через adm_trigger_rule / adm_dry_run_rule); если None —
                  создаём новую.
         dry_run: True → SQL выполняется, аудитория считается, но
-                 notifications.adm_create_task НЕ вызывается. Анналитик
+                 notifications.adm_create_task НЕ вызывается. Аналитик
                  узнаёт matched_users по v_runs.
 
     Возвращает: run_id.
@@ -230,21 +230,22 @@ async def _create_notification_task(
     окон при сбое — это пока обеспечивается только при том же run_id; при
     новом run_id будет новый task. Полное восстановление — неделя 3).
     """
-    audience = {"type": "user_ids", "values": user_ids}
-    params = {"rule_code": rule_code}
-    ikey = f"alerting:{rule_id}:{run_id}"
+    audience = {"type": "user_ids", "values": user_ids}  # кому слать: список user_id
+    params = {"rule_code": rule_code}                    # подстановки для Jinja-шаблона письма
+    ikey = f"alerting:{rule_id}:{run_id}"                # ключ идемпотентности (см. докстринг)
 
     async with async_session_maker() as session:
         result = await session.execute(
+            # Аргументы notifications.adm_create_task (именованные, p_* := значение):
             text(
                 "SELECT notifications.adm_create_task("
-                "  p_template_code   := :tc,"
-                "  p_channel         := :ch,"
-                "  p_audience        := CAST(:aud AS JSONB),"
-                "  p_name            := :name,"
-                "  p_params          := CAST(:params AS JSONB),"
-                "  p_idempotency_key := :ikey,"
-                "  p_created_by      := 'alerting-engine'"
+                "  p_template_code   := :tc,"      # код шаблона письма (notifications.t_templates)
+                "  p_channel         := :ch,"      # канал доставки: 'email' | 'ws'
+                "  p_audience        := CAST(:aud AS JSONB),"     # аудитория: {type, values}
+                "  p_name            := :name,"    # человекочитаемое имя задачи (для логов/админки)
+                "  p_params          := CAST(:params AS JSONB),"  # параметры шаблона
+                "  p_idempotency_key := :ikey,"    # повтор того же run-а не создаст дубль
+                "  p_created_by      := 'alerting-engine'"        # автор задачи (аудит)
                 ")"
             ),
             {

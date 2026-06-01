@@ -2,8 +2,8 @@ FROM python:3.12.13-slim
 
 WORKDIR /opt/alerting-service
 
+# netcat — docker-entrypoint.sh ждёт готовности Postgres через `nc -z`
 RUN apt-get update && apt-get install -y \
-    curl \
     netcat-openbsd \
     && rm -rf /var/lib/apt/lists/*
 

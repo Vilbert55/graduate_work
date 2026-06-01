@@ -36,11 +36,22 @@ class Settings(BaseSettings):
     starrocks_query_timeout_sec: int = 30    # тайм-аут SQL-правила
 
     @property
-    def database_url(self) -> str:
+    def _pg_dsn_tail(self) -> str:
+        # Общая часть DSN: creds@host:port/db (схему дописывает каждый потребитель).
         return (
-            f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}"
+            f"{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
+
+    @property
+    def database_url(self) -> str:
+        # Для SQLAlchemy: схема обязана указывать драйвер (+asyncpg).
+        return f"postgresql+asyncpg://{self._pg_dsn_tail}"
+
+    @property
+    def asyncpg_dsn(self) -> str:
+        # Для прямого asyncpg.connect() (LISTEN/NOTIFY): обычный libpq-DSN без драйвера.
+        return f"postgresql://{self._pg_dsn_tail}"
 
 
 settings = Settings()

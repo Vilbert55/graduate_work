@@ -95,7 +95,7 @@ alerting-service/
     ├── db/starrocks.py             # aiomysql-пул
     ├── models/entity.py            # Rule / Run / DispatchHistory (read-only ORM)
     └── workers/
-        ├── __main__.py             # entrypoint
+        ├── main.py                 # entrypoint (python -m src.workers.main)
         └── engine.py               # APScheduler-движок
 ```
 

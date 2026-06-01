@@ -510,7 +510,7 @@ services:
         condition: service_healthy
       movies-alerting-migrations:
         condition: service_completed_successfully
-    command: ["python", "-m", "src.workers"]
+    command: ["python", "-m", "src.workers.main"]
     restart: unless-stopped
 
   # Mailpit — локальный SMTP-приёмник для отладки писем

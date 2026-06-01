@@ -1,6 +1,6 @@
 """Точка входа alerting-engine.
 
-Запуск:  python -m src.workers
+Запуск:  python -m src.workers.main
 """
 import asyncio
 import logging

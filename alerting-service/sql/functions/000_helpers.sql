@@ -19,7 +19,7 @@ $$;
 -- @statement
 
 -- Грубая проверка cron: 5 полей через пробелы. NULL пропускается.
--- Полная валидация (croniter) — на стороне движка.
+-- Полную валидацию делает движок (APScheduler CronTrigger.from_crontab).
 CREATE OR REPLACE FUNCTION alerting._check_cron(p_cron TEXT)
 RETURNS VOID
 LANGUAGE plpgsql

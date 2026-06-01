@@ -1,15 +1,10 @@
 # Сводка  — неделя 2
 
-Дипломный проект: **closed-loop alerting service для онлайн-кинотеатра** на StarRocks.
-ТЗ — `diploma_tz.md` (полное) / `diploma_tz_short.md` (защита). Аналитическая записка
-недели — `diploma_week2_notes.md`.
-
----
 
 ## 1. Что это и зачем
 
-Между двумя готовыми конвейерами проекта — `activity-tracker → Kafka → StarRocks`
-(события) и `notifications-service` (доставка писем) — не хватало звена «данные → действие».
+Между двумя готовыми конвейерами проекта — `activity-tracker -> Kafka -> StarRocks`
+(события) и `notifications-service` (доставка писем) — не хватало звена «данные -> действие».
 Новый сервис `alerting-service` его замыкает: продуктовый аналитик пишет SQL-правило
 (`SELECT user_id, context FROM mv_*`), регистрирует одной функцией, а движок по расписанию
 выполняет запрос в StarRocks и создаёт задачу в notifications. Никакого маркетолога-оператора
@@ -22,13 +17,13 @@
 
 ## 2. Что сделано к концу недели 2
 
-Минимальный, но **сквозной** end-to-end (проверен чистым прогоном `down -v && up --build`):
+Минимальный, но **сквозной** end-to-end:
 
 ```
-seed-users → trigger-events → Kafka → Routine Load → user_events (StarRocks)
-  → mv_* (async MV) → adm_create_rule (Postgres) → adm_trigger_rule
-  → pg_notify → alerting-engine → SQL в StarRocks под alert_reader
-  → notifications.adm_create_task → RabbitMQ → email-sender → Mailpit (22 письма)
+seed-users -> trigger-events -> Kafka -> Routine Load -> user_events (StarRocks)
+  -> mv_* (async MV) -> adm_create_rule (Postgres) -> adm_trigger_rule
+  -> pg_notify -> alerting-engine -> SQL в StarRocks под alert_reader
+  -> notifications.adm_create_task -> RabbitMQ -> email-sender -> Mailpit (22 письма)
 ```
 Параллельно поднят Superset поверх тех же Materialized views.
 
@@ -40,7 +35,7 @@ seed-users → trigger-events → Kafka → Routine Load → user_events (StarRo
 | Путь | Что |
 |---|---|
 | `src/workers/engine.py` | Ядро движка: APScheduler (cron каждого правила) + LISTEN на канале `alerting_trigger` (ручной запуск/dry-run). Синхронизация jobs с `t_rules`. |
-| `src/services/executor.py` | Исполнение одного срабатывания: SQL в StarRocks → парсинг `user_id` → `adm_create_task` с идемпотентным ключом → запись `t_runs`. **Докстринг наверху честно перечисляет упрощения недели 2.** |
+| `src/services/executor.py` | Исполнение одного срабатывания: SQL в StarRocks -> парсинг `user_id` -> `adm_create_task` с идемпотентным ключом -> запись `t_runs`. **Докстринг наверху честно перечисляет упрощения недели 2.** |
 | `src/db/starrocks.py` | Короткоживущее соединение под `alert_reader` (MySQL-протокол, aiomysql). |
 | `src/db/postgres.py`, `src/models/entity.py` | SQLAlchemy: движок читает `t_rules` через ORM; пишет в `t_runs` через raw SQL. |
 | `src/core/config.py` | Pydantic-settings, префикс `ALERTING_`. |
@@ -67,7 +62,7 @@ seed-users → trigger-events → Kafka → Routine Load → user_events (StarRo
 | Сервис | Что добавлено |
 |---|---|
 | `auth-service` | Миграция: nullable `gender/age/country/is_demo` в `auth.users` (под сегментацию `dim_users`). |
-| `activity-tracker-service` | `event_type=recommendation` (`POST /ugc/api/v1/events/recommendation`) + Kafka-топик `recommendations` — замыкает контур «письмо → клик → факт». |
+| `activity-tracker-service` | `event_type=recommendation` (`POST /ugc/api/v1/events/recommendation`) + Kafka-топик `recommendations` — замыкает контур «письмо -> клик -> факт». |
 
 ---
 
@@ -85,7 +80,7 @@ seed-users → trigger-events → Kafka → Routine Load → user_events (StarRo
 
 | Отложено | Требование | Текущее состояние |
 |---|---|---|
-| Per-user `context` из SQL в письмо | ФТ-2 | SQL возвращает `context`, но executor читает только `user_id`; `adm_create_task` принимает один `params` на всю аудиторию → жанры в письме пока по дефолту шаблона. Нужен per-user разлив params. |
+| Per-user `context` из SQL в письмо | ФТ-2 | SQL возвращает `context`, но executor читает только `user_id`; `adm_create_task` принимает один `params` на всю аудиторию -> жанры в письме пока по дефолту шаблона. Нужен per-user разлив params. |
 | Двухуровневый frequency_cap | ФТ-3 | не применяется, `after_cap = matched`. |
 | Построчная запись `t_dispatch_history` + партиции/retention | ФТ-8, §12 | пишется только агрегат в `t_runs`. |
 | Recovery прерванных `running`-запусков | НФТ-3 | run «зависнет» в `running` при рестарте между NOTIFY и execute. |
@@ -99,7 +94,7 @@ seed-users → trigger-events → Kafka → Routine Load → user_events (StarRo
 ## 6. Чем демонстрировать
 
 Пошаговый сценарий с командами/запросами — отдельный файл **`demo_week2.md`**
-(терминал → DBeaver → Mailpit → Superset, опционально Postman для замыкания контура).
+(терминал -> DBeaver -> Mailpit -> Superset, опционально Postman для замыкания контура).
 Готовые SQL-вызовы — `alerting-service/examples.sql`.
 
 ---
@@ -109,5 +104,5 @@ seed-users → trigger-events → Kafka → Routine Load → user_events (StarRo
 - **«Почему движок один экземпляр?»** — осознанный MVP-компромисс (R6). Защита: автоперезапуск контейнера + recovery (неделя 3). Масштаб — leader election через `pg_advisory_lock` (вынесено в «улучшения», без внешних координаторов).
 - **«Что если аналитик вернёт миллион user_id?»** — потолок `max_users` (усечение + warning), тайм-аут SQL 30 сек на сессию StarRocks (R4, R7).
 - **«Почему StarRocks, а не ClickHouse?»** — он уже в проекте под UGC; нужны были Routine Load (Kafka), async MV и JDBC Catalog — всё нативно.
-- **«StarRocks 4.0.8 — почему не свежее?»** — на нём весь стек проверен end-to-end; вскрылись и починены версионные особенности (напр. `json_object` не берёт ARRAY → `to_json(named_struct(...))`; `EXECUTE TASK` не поддерживается → прямой `INSERT OVERWRITE` + `REFRESH ... WITH SYNC MODE`).
+- **«StarRocks 4.0.8 — почему не свежее?»** — на нём весь стек проверен end-to-end; вскрылись и починены версионные особенности (напр. `json_object` не берёт ARRAY -> `to_json(named_struct(...))`; `EXECUTE TASK` не поддерживается -> прямой `INSERT OVERWRITE` + `REFRESH ... WITH SYNC MODE`).
 - **«Как считается ROI правила?»** — через замкнутый контур: реакция на письмо (`recommendation` event) возвращается в `user_events`, аналитик строит конверсию в Superset.
