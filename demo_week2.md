@@ -159,10 +159,16 @@ FROM alerting.v_runs ORDER BY started_at DESC LIMIT 1;
 ```
 Ожидаем: `status=success`, `dispatched_users = matched_users`, заполнен `notification_task_id`.
 
-**Проверка задачи в notifications (Postgres):**
+**Проверка задачи в notifications (Postgres)** — задача fan-out'нулась в сообщения и они ушли:
 ```sql
-SELECT id, state, template_id FROM notifications.t_tasks ORDER BY created_at DESC LIMIT 1;
+SELECT m.status, count(*)
+FROM notifications.t_messages m
+WHERE m.task_id = (SELECT id FROM notifications.t_tasks ORDER BY created_at DESC LIMIT 1)
+GROUP BY m.status;
 ```
+Ожидаем `status=sent` с числом = `dispatched_users`. Если строк нет / `inserted=0` в
+логах scheduler — почти всегда рассинхрон шаблона: тело письма дёргает переменную,
+которой нет в namespace (доступны только `user` и `params`).
 
 ---
 

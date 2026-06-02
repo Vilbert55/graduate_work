@@ -19,10 +19,14 @@ USE ugc_analytics;
 -- 1. JDBC Catalog поверх Postgres
 -- ============================================================
 -- ${POSTGRES_USER} / ${POSTGRES_PASSWORD} подставляются envsubst в entrypoint.
+-- EXTERNAL CATALOG (StarRocks) — «внешний каталог»: StarRocks читает чужую
+-- БД (здесь Postgres по JDBC) как свои таблицы, БЕЗ копирования данных.
+-- Обращение: pg_catalog.<схема>.<таблица>, напр. pg_catalog.content.genre.
 DROP CATALOG IF EXISTS pg_catalog;
 CREATE EXTERNAL CATALOG pg_catalog
 PROPERTIES (
-    "type" = "jdbc",
+    "type" = "jdbc",                          -- тип внешнего источника
+    -- ниже — доступ к Postgres и URL JDBC-драйвера (StarRocks скачает его сам)
     "user" = "${POSTGRES_USER}",
     "password" = "${POSTGRES_PASSWORD}",
     "jdbc_uri" = "jdbc:postgresql://movies-db:5432/movies",
@@ -33,6 +37,8 @@ PROPERTIES (
 -- ============================================================
 -- 2. Dim-таблицы (PRIMARY KEY — поддерживают INSERT OVERWRITE)
 -- ============================================================
+-- Все 4 таблицы ниже сделаны одинаково (PRIMARY KEY + DISTRIBUTED BY HASH +
+-- те же PROPERTIES) — подробные пояснения к этим StarRocks-клаузам см. у dim_films.
 
 CREATE TABLE IF NOT EXISTS dim_films (
     film_id        VARCHAR(36)   NOT NULL,
@@ -41,13 +47,17 @@ CREATE TABLE IF NOT EXISTS dim_films (
     creation_date  DATE          NULL,
     rating         FLOAT         NULL,
     is_new         BOOLEAN       NULL COMMENT 'creation_date > now() - 30d',
-    genres         ARRAY<STRING> NULL
+    genres         ARRAY<STRING> NULL          -- StarRocks умеет колонки-массивы
 )
+-- PRIMARY KEY — модель таблицы StarRocks (одна из 4-х). Строки уникальны по
+-- ключу и перезаписываются по нему; именно она поддерживает INSERT OVERWRITE/UPSERT.
 PRIMARY KEY (film_id)
+-- DISTRIBUTED BY HASH(...) BUCKETS N — физически режем таблицу на N бакетов
+-- по хешу ключа: даёт параллельное чтение и локальный JOIN по этому ключу.
 DISTRIBUTED BY HASH(film_id) BUCKETS 4
 PROPERTIES (
-    "replication_num" = "1",
-    "enable_persistent_index" = "true"
+    "replication_num" = "1",                  -- копий данных: 1 (dev на одном BE; в проде обычно 3)
+    "enable_persistent_index" = "true"        -- индекс PK на диске → быстрый UPSERT, не ест RAM
 );
 
 CREATE TABLE IF NOT EXISTS dim_users (
@@ -71,7 +81,7 @@ CREATE TABLE IF NOT EXISTS dim_genres (
     name      VARCHAR(255) NULL
 )
 PRIMARY KEY (genre_id)
-DISTRIBUTED BY HASH(genre_id) BUCKETS 2
+DISTRIBUTED BY HASH(genre_id) BUCKETS 2     -- жанров мало → меньше бакетов, чем у остальных
 PROPERTIES (
     "replication_num" = "1",
     "enable_persistent_index" = "true"
@@ -101,6 +111,9 @@ PROPERTIES (
 -- ============================================================
 -- 3. Первичная заливка (синхронно, чтобы MV сразу было что считать)
 -- ============================================================
+-- INSERT OVERWRITE (StarRocks) — атомарно заменяет ВСЁ содержимое таблицы
+-- результатом SELECT (старые строки отбрасываются). Возможен на PRIMARY KEY-таблицах.
+-- Источник SELECT — pg_catalog.* (внешний каталог), т.е. читаем напрямую из Postgres.
 
 INSERT OVERWRITE dim_genres
 SELECT
@@ -117,6 +130,7 @@ SELECT
     f.rating,
     f.creation_date IS NOT NULL AND f.creation_date > date_sub(current_date(), INTERVAL 30 DAY) AS is_new,
     (
+        -- array_agg — собираем имена жанров фильма в один массив (колонка ARRAY)
         SELECT array_agg(g.name)
         FROM pg_catalog.content.genre_film_work gfw
         JOIN pg_catalog.content.genre g ON g.id = gfw.genre_id
@@ -167,6 +181,9 @@ FROM pg_catalog.content.date_dimension d;
 --    необходимости запускает руками: EXECUTE TASK sync_dim_users; ...
 -- ============================================================
 
+-- SUBMIT TASK ... SCHEDULE EVERY (StarRocks) — нативный планировщик внутри БД:
+-- гоняет указанный SQL по расписанию без внешнего ETL/cron. DROP TASK снимает
+-- прежнюю задачу перед пересозданием. Вручную запустить: EXECUTE TASK <имя>.
 DROP TASK IF EXISTS sync_dim_films;
 SUBMIT TASK sync_dim_films SCHEDULE EVERY (INTERVAL 1 HOUR)
 AS INSERT OVERWRITE dim_films
@@ -235,10 +252,15 @@ FROM pg_catalog.content.date_dimension d;
 --    при изменении источников).
 -- ============================================================
 
+-- MATERIALIZED VIEW в StarRocks — это физически хранимый, заранее посчитанный
+-- результат запроса (не «вьюха на лету»). REFRESH ASYNC — StarRocks сам
+-- пересчитывает его в фоне при изменении источников. DISTRIBUTED BY — как у
+-- таблиц, задаёт бакетирование хранимого результата. Пояснения — у первого MV ниже.
+
 -- 5.1 mv_user_activity — для сценария «возврат угасшего пользователя».
 CREATE MATERIALIZED VIEW IF NOT EXISTS mv_user_activity
 DISTRIBUTED BY HASH(user_id) BUCKETS 4
-REFRESH ASYNC
+REFRESH ASYNC                                -- фоновый автопересчёт при изменении user_events
 PROPERTIES ("replication_num" = "1")
 AS
 SELECT
@@ -264,6 +286,7 @@ WITH user_genre_views AS (
         count(*) AS views
     FROM ugc_analytics.user_events e
     JOIN ugc_analytics.dim_films f ON f.film_id = e.film_id
+    -- unnest — разворачивает массив f.genres в строки (по строке на жанр)
     CROSS JOIN unnest(f.genres) AS t(g)
     WHERE e.event_type = 'view'
       AND e.client_time > date_sub(now(), INTERVAL 30 DAY)
@@ -336,11 +359,16 @@ GROUP BY date(e.client_time), e.film_id;
 -- 6. Роль alert_reader — её использует alerting-engine
 --    (только SELECT на схему ugc_analytics).
 -- ============================================================
+-- RBAC в StarRocks — по MySQL-протоколу: пользователь задаётся как 'имя'@'хост'
+-- ('%' = с любого хоста). Права вешаем на РОЛЬ, роль выдаём пользователю.
 CREATE USER IF NOT EXISTS 'alert_reader'@'%' IDENTIFIED BY 'alert_reader';
 CREATE ROLE IF NOT EXISTS alert_reader;
+-- ON ALL TABLES IN DATABASE — разом на все таблицы схемы (групповой GRANT StarRocks)
 GRANT SELECT ON ALL TABLES IN DATABASE ugc_analytics TO ROLE alert_reader;
 -- В StarRocks materialized views — отдельный объект привилегий: GRANT ... ON
 -- ALL TABLES их НЕ покрывает, а правила alerting-engine читают именно mv_*.
 GRANT SELECT ON ALL MATERIALIZED VIEWS IN DATABASE ugc_analytics TO ROLE alert_reader;
-GRANT alert_reader TO 'alert_reader'@'%';
+GRANT alert_reader TO 'alert_reader'@'%';            -- выдать роль пользователю
+-- SET DEFAULT ROLE — роль активируется автоматически при входе (иначе её
+-- пришлось бы каждый раз включать вручную через SET ROLE).
 SET DEFAULT ROLE alert_reader TO 'alert_reader'@'%';
