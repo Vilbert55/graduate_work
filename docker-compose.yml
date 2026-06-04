@@ -120,10 +120,14 @@ services:
     volumes:
       - movies-elasticsearch_data:/usr/share/elasticsearch/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9200"]
+      # ES 8.x грузится небыстро (JVM + инициализация шаблонов/ILM), а при малой
+      # куче ещё дольше. Без start_period проваленные проверки на старте сразу
+      # копятся в retries и контейнер уходит в unhealthy до готовности HTTP:9200.
+      test: ["CMD-SHELL", "curl -fs http://localhost:9200/_cluster/health || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 90s
 
   movies-films-etl-service:
     container_name: movies-films-etl-service
@@ -286,7 +290,10 @@ services:
     volumes:
       - movies-rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      # ping подтверждает только что нода жива, но AMQP-листенер (5672) может
+      # ещё не принимать соединения. check_port_connectivity проверяет именно
+      # доступность портов, поэтому service_healthy реально означает готовность.
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -567,10 +574,14 @@ services:
     volumes:
       - movies-starrocks_data:/opt/starrocks/data
     healthcheck:
+      # allin1-образ поднимает FE+BE и долго инициализируется. Без start_period
+      # проваленные на старте проверки копятся в retries и контейнер уходит в
+      # unhealthy до готовности MySQL-протокола на 9030.
       test: ["CMD", "mysql", "-h", "127.0.0.1", "-P", "9030", "-u", "root", "-e", "SELECT 1"]
       interval: 15s
       timeout: 5s
       retries: 10
+      start_period: 120s
     environment:
       - FE_MAX_HEAP_SIZE=2G
       - BE_MAX_HEAP_SIZE=2G
