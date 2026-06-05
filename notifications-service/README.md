@@ -103,7 +103,7 @@ SELECT notifications.adm_create_task(
     p_code            := 'friday_digest'
 );
 
--- Отключить / включить задание по его code (uuid искать не нужно)
+-- Отключить / включить задание по его code
 SELECT notifications.adm_disable_task('friday_digest');
 SELECT notifications.adm_enable_task('friday_digest');
 
