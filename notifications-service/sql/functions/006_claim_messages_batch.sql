@@ -1,7 +1,7 @@
--- notifications.svc_claim_messages_batch — outbox publisher:
+-- notifications._claim_messages_batch — outbox publisher:
 -- атомарно забирает порцию pending-сообщений и переводит их в queued.
 -- Вызывается только воркером publisher.
-CREATE OR REPLACE FUNCTION notifications.svc_claim_messages_batch(
+CREATE OR REPLACE FUNCTION notifications._claim_messages_batch(
     p_worker_id  TEXT,
     p_batch_size INT DEFAULT 100
 ) RETURNS TABLE(
@@ -42,7 +42,7 @@ $$;
 
 -- @statement
 
-COMMENT ON FUNCTION notifications.svc_claim_messages_batch(TEXT, INT) IS
+COMMENT ON FUNCTION notifications._claim_messages_batch(TEXT, INT) IS
 'Outbox publisher: атомарный SELECT FOR UPDATE SKIP LOCKED + перевод pending -> queued.
 Предназначена для вызова только воркером publisher.
 
@@ -54,4 +54,4 @@ COMMENT ON FUNCTION notifications.svc_claim_messages_batch(TEXT, INT) IS
 
 -- @statement
 
-REVOKE EXECUTE ON FUNCTION notifications.svc_claim_messages_batch(TEXT, INT) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION notifications._claim_messages_batch(TEXT, INT) FROM PUBLIC;

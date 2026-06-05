@@ -80,7 +80,7 @@ COMMENT ON FUNCTION alerting.adm_create_rule(TEXT, TEXT, TEXT, TEXT, TEXT, TEXT,
   p_idempotency_key TEXT  DEFAULT NULL  — уникальный ключ, повтор вернёт существующий rule_id
   p_created_by      TEXT  DEFAULT ''admin''
 
-Создано отключённым (is_enabled=FALSE). Включить — alerting.adm_enable_rule(rule_id).';
+Создано отключённым (is_enabled=FALSE). Включить — alerting.adm_enable_rule(code).';
 
 -- @statement
 

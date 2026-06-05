@@ -41,9 +41,9 @@ SELECT alerting.adm_create_rule(
 -- 3. Dry-run: выполнить SQL в StarRocks, посчитать аудиторию, БЕЗ рассылки.
 --    Функция возвращает run_id; результат — в v_runs.
 -- ============================================================
-SELECT alerting.adm_dry_run_rule(
-    (SELECT id FROM alerting.t_rules WHERE code = 'winback_active_user')
-) AS run_id;
+-- Все adm_*-функции адресуют правило по его code (тот же, что в adm_create_rule),
+-- искать uuid вручную не нужно.
+SELECT alerting.adm_dry_run_rule('winback_active_user') AS run_id;
 \gset
 
 -- Подождать 1-2 секунды, потом посмотреть:
@@ -54,14 +54,14 @@ WHERE run_id = :'run_id';
 -- ============================================================
 -- 4. Включаем / выключаем / удаляем правило.
 -- ============================================================
-SELECT alerting.adm_enable_rule((SELECT id FROM alerting.t_rules WHERE code='winback_active_user'));
-SELECT alerting.adm_disable_rule((SELECT id FROM alerting.t_rules WHERE code='winback_active_user'));
-SELECT alerting.adm_delete_rule((SELECT id FROM alerting.t_rules WHERE code='winback_active_user'));
+SELECT alerting.adm_enable_rule('winback_active_user');
+SELECT alerting.adm_disable_rule('winback_active_user');
+SELECT alerting.adm_delete_rule('winback_active_user');
 
 -- ============================================================
 -- 5. Ручной запуск вне расписания.
 -- ============================================================
-SELECT alerting.adm_trigger_rule((SELECT id FROM alerting.t_rules WHERE code='winback_active_user'));
+SELECT alerting.adm_trigger_rule('winback_active_user');
 
 -- ============================================================
 -- 6. Мониторинг.

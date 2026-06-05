@@ -1,7 +1,7 @@
 -- alerting.adm_update_rule — изменить параметры правила.
 -- NULL-аргумент оставляет соответствующее поле без изменений.
 CREATE OR REPLACE FUNCTION alerting.adm_update_rule(
-    p_rule_id         UUID,
+    p_rule_code       TEXT,
     p_sql             TEXT     DEFAULT NULL,
     p_cron            TEXT     DEFAULT NULL,
     p_template_code   TEXT     DEFAULT NULL,
@@ -14,6 +14,8 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = pg_catalog, alerting, notifications
 AS $$
+DECLARE
+    v_rule_id UUID := alerting._rule_id(p_rule_code);
 BEGIN
     PERFORM alerting._check_channel(p_channel);
     PERFORM alerting._check_cron(p_cron);
@@ -38,21 +40,21 @@ BEGIN
         max_users        = COALESCE(p_max_users, max_users),
         description      = COALESCE(p_description, description),
         updated_at       = (now() AT TIME ZONE 'utc')
-    WHERE id = p_rule_id AND is_deleted = FALSE;
+    WHERE id = v_rule_id AND is_deleted = FALSE;
 
     IF NOT FOUND THEN
-        RAISE EXCEPTION 'rule_not_found: %', p_rule_id;
+        RAISE EXCEPTION 'rule_not_found: %', p_rule_code;
     END IF;
 END;
 $$;
 
 -- @statement
 
-COMMENT ON FUNCTION alerting.adm_update_rule(UUID, TEXT, TEXT, TEXT, TEXT, JSONB, INTEGER, TEXT) IS
-'Изменить параметры правила. NULL-аргументы оставляют поля без изменений.
-Бросает rule_not_found если правило не существует или мягко удалено.';
+COMMENT ON FUNCTION alerting.adm_update_rule(TEXT, TEXT, TEXT, TEXT, TEXT, JSONB, INTEGER, TEXT) IS
+'Изменить параметры правила (адресуется по code). NULL-аргументы оставляют поля
+без изменений. Бросает rule_not_found если правило не существует или мягко удалено.';
 
 -- @statement
 
-GRANT EXECUTE ON FUNCTION alerting.adm_update_rule(UUID, TEXT, TEXT, TEXT, TEXT, JSONB, INTEGER, TEXT)
+GRANT EXECUTE ON FUNCTION alerting.adm_update_rule(TEXT, TEXT, TEXT, TEXT, TEXT, JSONB, INTEGER, TEXT)
     TO alerting_admin;

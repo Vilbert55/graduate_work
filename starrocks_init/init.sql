@@ -2,9 +2,9 @@ CREATE DATABASE IF NOT EXISTS ugc_analytics;
 
 USE ugc_analytics;
 
-ADMIN SET FRONTEND CONFIG ("max_routine_load_task_num_per_be" = "4");  -- 4 routine loads: views/clicks/custom/recommendations
-
-SELECT sleep(10); -- на всякий случай, т.к. конфиг применяется асинхронно, а вообще для прода весь конфиг надо отдельно выносить
+-- Максимум одновременных Routine Load задач на один BE. Должно быть >= числу
+-- Routine Load заданий ниже (сейчас их 4). Добавишь пятое — подними значение.
+ADMIN SET FRONTEND CONFIG ("max_routine_load_task_num_per_be" = "4");
 
 -- ------------------------------------------------------------------
 -- user_events — Primary Key table.
@@ -42,6 +42,10 @@ PROPERTIES (
 );
 
 
+-- ------------------------------------------------------------------
+-- Routine Load: views / clicks / custom / recommendations.
+-- Каждое задание читает свой Kafka-топик и пишет в user_events.
+-- ------------------------------------------------------------------
 CREATE ROUTINE LOAD ugc_analytics.views_load ON user_events
 COLUMNS(
     user_id,
@@ -156,7 +160,7 @@ FROM KAFKA
 );
 
 
--- Reaktion пользователя на письма от alerting-service (см.
+-- Реакция пользователя на письма от alerting-service (см.
 -- activity-tracker /ugc/api/v1/events/recommendation).
 CREATE ROUTINE LOAD ugc_analytics.recommendations_load ON user_events
 COLUMNS(

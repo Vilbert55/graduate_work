@@ -1,6 +1,6 @@
--- notifications.svc_mark_message_sent — sender: финальный успех доставки.
+-- notifications._mark_message_sent — sender: финальный успех доставки.
 -- Вызывается только воркерами email-sender и ws-gateway.
-CREATE OR REPLACE FUNCTION notifications.svc_mark_message_sent(
+CREATE OR REPLACE FUNCTION notifications._mark_message_sent(
     p_message_id UUID,
     p_worker_id  TEXT DEFAULT NULL
 ) RETURNS VOID
@@ -27,7 +27,7 @@ $$;
 
 -- @statement
 
-COMMENT ON FUNCTION notifications.svc_mark_message_sent(UUID, TEXT) IS
+COMMENT ON FUNCTION notifications._mark_message_sent(UUID, TEXT) IS
 'Sender: пометить сообщение как успешно доставленное (статус -> sent).
 Предназначена для вызова только воркерами email-sender и ws-gateway.
 Идемпотентна: повторный вызов перепишет sent_at, что безвредно.
@@ -41,4 +41,4 @@ COMMENT ON FUNCTION notifications.svc_mark_message_sent(UUID, TEXT) IS
 
 -- @statement
 
-REVOKE EXECUTE ON FUNCTION notifications.svc_mark_message_sent(UUID, TEXT) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION notifications._mark_message_sent(UUID, TEXT) FROM PUBLIC;

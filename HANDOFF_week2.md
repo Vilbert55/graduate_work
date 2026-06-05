@@ -177,9 +177,7 @@ SELECT alerting.adm_create_rule(
     p_template_code := 'winback_recommendation',
     p_channel := 'email'
 );
-SELECT alerting.adm_enable_rule(
-    (SELECT id FROM alerting.t_rules WHERE code='winback_demo')
-);
+SELECT alerting.adm_enable_rule('winback_demo');
 SQL
 
 # 7) Принудительно обновить MV (без часовой паузы)
@@ -212,9 +210,7 @@ open http://localhost:8025
 
 ```sql
 -- Под пользователем с ролью alerting_admin
-SELECT alerting.adm_trigger_rule(
-    (SELECT id FROM alerting.t_rules WHERE code='winback_demo')
-) AS run_id;
+SELECT alerting.adm_trigger_rule('winback_demo') AS run_id;
 
 -- Через 2-5 секунд:
 SELECT status, matched_users, dispatched_users, notification_task_id, error

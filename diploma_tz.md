@@ -176,11 +176,15 @@ Mindbox, Sendsay, RetentionRocket (Россия), Customer.io, Braze, Klaviyo, B
 | Функция | Назначение |
 |---|---|
 | `adm_create_rule(p_code, p_description, p_sql, p_cron, p_template_code, p_channel, p_frequency_cap, p_max_users, p_idempotency_key, p_created_by) -> UUID` | Создать правило. Идемпотентна. |
-| `adm_update_rule(p_rule_id, p_sql, p_cron, p_template_code, ...)` | Обновить (`NULL` = не менять). |
-| `adm_enable_rule(p_rule_id)` / `adm_disable_rule(p_rule_id)` | Переключатели. |
-| `adm_delete_rule(p_rule_id)` | Мягкое удаление: `is_deleted = true`. |
-| `adm_dry_run_rule(p_rule_id) -> table(matched int, after_cap int, sample uuid[])` | Тестовый прогон без рассылки. |
-| `adm_trigger_rule(p_rule_id) -> UUID (run_id)` | Ручной запуск сейчас вне расписания. |
+| `adm_update_rule(p_rule_code, p_sql, p_cron, p_template_code, ...)` | Обновить (`NULL` = не менять). |
+| `adm_enable_rule(p_rule_code)` / `adm_disable_rule(p_rule_code)` | Переключатели. |
+| `adm_delete_rule(p_rule_code)` | Мягкое удаление: `is_deleted = true`. |
+| `adm_dry_run_rule(p_rule_code) -> UUID (run_id)` | Тестовый прогон без рассылки. |
+| `adm_trigger_rule(p_rule_code) -> UUID (run_id)` | Ручной запуск сейчас вне расписания. |
+
+Все операции над существующим правилом адресуют его по человекочитаемому `code`
+(тому же, что задан в `adm_create_rule`), а не по `uuid` — администратору не нужно
+сперва искать идентификатор.
 
 ### 8.2 Представления
 
@@ -215,8 +219,8 @@ SELECT alerting.adm_create_rule(
 );
 
 -- 3. Dry-run -> 4. Enable -> 5. Опционально trigger -> 6. Мониторинг через v_runs / v_dispatch
-SELECT * FROM alerting.adm_dry_run_rule('<rule_id>');
-SELECT alerting.adm_enable_rule('<rule_id>');
+SELECT alerting.adm_dry_run_rule('winback_active_user');  -- адресуем по code
+SELECT alerting.adm_enable_rule('winback_active_user');
 ```
 
 ---

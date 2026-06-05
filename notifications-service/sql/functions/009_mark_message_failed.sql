@@ -1,8 +1,8 @@
--- notifications.svc_mark_message_failed — sender: обработка ошибки доставки.
+-- notifications._mark_message_failed — sender: обработка ошибки доставки.
 -- При attempts >= p_max_attempts -> статус 'dead' (сообщение покидает систему).
 -- Иначе -> 'pending' + next_attempt_at с экспоненциальным backoff (30s * 2^attempts).
 -- Вызывается только воркерами email-sender и ws-gateway.
-CREATE OR REPLACE FUNCTION notifications.svc_mark_message_failed(
+CREATE OR REPLACE FUNCTION notifications._mark_message_failed(
     p_message_id  UUID,
     p_error       TEXT,
     p_max_attempts INT  DEFAULT 5,
@@ -52,7 +52,7 @@ $$;
 
 -- @statement
 
-COMMENT ON FUNCTION notifications.svc_mark_message_failed(UUID, TEXT, INT, TEXT) IS
+COMMENT ON FUNCTION notifications._mark_message_failed(UUID, TEXT, INT, TEXT) IS
 'Sender: зафиксировать ошибку доставки и вычислить следующий шаг.
 Предназначена для вызова только воркерами email-sender и ws-gateway.
 
@@ -71,4 +71,4 @@ Backoff: next_attempt_at = now() + 30s * 2^(текущее_число_попыт
 
 -- @statement
 
-REVOKE EXECUTE ON FUNCTION notifications.svc_mark_message_failed(UUID, TEXT, INT, TEXT) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION notifications._mark_message_failed(UUID, TEXT, INT, TEXT) FROM PUBLIC;

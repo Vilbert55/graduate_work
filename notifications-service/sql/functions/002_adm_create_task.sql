@@ -14,7 +14,8 @@ CREATE OR REPLACE FUNCTION notifications.adm_create_task(
     p_start_at        TIMESTAMP DEFAULT NULL,
     p_end_at          TIMESTAMP DEFAULT NULL,
     p_idempotency_key TEXT      DEFAULT NULL,
-    p_created_by      TEXT      DEFAULT 'admin'
+    p_created_by      TEXT      DEFAULT 'admin',
+    p_code            TEXT      DEFAULT NULL
 ) RETURNS UUID
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -48,10 +49,11 @@ BEGIN
     END IF;
 
     INSERT INTO notifications.t_tasks(
-        name, template_id, channel, audience, params,
+        code, name, template_id, channel, audience, params,
         cron_expression, start_at, end_at,
         is_enabled, next_run_at, created_by, idempotency_key
     ) VALUES (
+        p_code,
         COALESCE(p_name, 'task:' || p_template_code),
         v_template_id,
         p_channel,
@@ -73,7 +75,7 @@ $$;
 
 -- @statement
 
-COMMENT ON FUNCTION notifications.adm_create_task(TEXT, TEXT, JSONB, TEXT, JSONB, TEXT, TIMESTAMP, TIMESTAMP, TEXT, TEXT) IS
+COMMENT ON FUNCTION notifications.adm_create_task(TEXT, TEXT, JSONB, TEXT, JSONB, TEXT, TIMESTAMP, TIMESTAMP, TEXT, TEXT, TEXT) IS
 'Создать задание на рассылку уведомлений. Идемпотентна через p_idempotency_key.
 
 Аргументы:
@@ -87,10 +89,14 @@ COMMENT ON FUNCTION notifications.adm_create_task(TEXT, TEXT, JSONB, TEXT, JSONB
   p_end_at          TIMESTAMP DEFAULT NULL — окончание; NULL = бессрочно
   p_idempotency_key TEXT  DEFAULT NULL — уникальный ключ; при повторном вызове вернёт существующий task_id
   p_created_by      TEXT  DEFAULT ''admin'' — метка автора для аудита
+  p_code            TEXT  DEFAULT NULL — человекочитаемый бизнес-ключ задания (uq_t_tasks_code).
+                                        Задайте, чтобы потом управлять заданием через
+                                        adm_enable_task / adm_disable_task / adm_update_task по code.
+                                        Одноразовым/программным рассылкам можно не задавать.
 
 Возвращает UUID созданного (или найденного по idempotency_key) задания.';
 
 -- @statement
 
-GRANT EXECUTE ON FUNCTION notifications.adm_create_task(TEXT, TEXT, JSONB, TEXT, JSONB, TEXT, TIMESTAMP, TIMESTAMP, TEXT, TEXT)
+GRANT EXECUTE ON FUNCTION notifications.adm_create_task(TEXT, TEXT, JSONB, TEXT, JSONB, TEXT, TIMESTAMP, TIMESTAMP, TEXT, TEXT, TEXT)
     TO notification_admin;

@@ -154,16 +154,17 @@ def downgrade() -> None:
     op.execute("DROP VIEW IF EXISTS alerting.v_runs")
     op.execute("DROP VIEW IF EXISTS alerting.v_rules")
 
-    op.execute("DROP FUNCTION IF EXISTS alerting.adm_trigger_rule(UUID)")
-    op.execute("DROP FUNCTION IF EXISTS alerting.adm_dry_run_rule(UUID)")
-    op.execute("DROP FUNCTION IF EXISTS alerting.adm_delete_rule(UUID)")
-    op.execute("DROP FUNCTION IF EXISTS alerting.adm_disable_rule(UUID)")
-    op.execute("DROP FUNCTION IF EXISTS alerting.adm_enable_rule(UUID)")
-    op.execute("DROP FUNCTION IF EXISTS alerting.adm_update_rule(UUID, TEXT, TEXT, TEXT, TEXT, JSONB, INTEGER, TEXT)")
+    op.execute("DROP FUNCTION IF EXISTS alerting.adm_trigger_rule(TEXT)")
+    op.execute("DROP FUNCTION IF EXISTS alerting.adm_dry_run_rule(TEXT)")
+    op.execute("DROP FUNCTION IF EXISTS alerting.adm_delete_rule(TEXT)")
+    op.execute("DROP FUNCTION IF EXISTS alerting.adm_disable_rule(TEXT)")
+    op.execute("DROP FUNCTION IF EXISTS alerting.adm_enable_rule(TEXT)")
+    op.execute("DROP FUNCTION IF EXISTS alerting.adm_update_rule(TEXT, TEXT, TEXT, TEXT, TEXT, JSONB, INTEGER, TEXT)")
     op.execute(
         "DROP FUNCTION IF EXISTS alerting.adm_create_rule(TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, JSONB, INTEGER, TEXT, TEXT)"
     )
 
+    op.execute("DROP FUNCTION IF EXISTS alerting._rule_id(TEXT)")
     op.execute("DROP FUNCTION IF EXISTS alerting._enqueue_rule_run(UUID, TEXT)")
     op.execute("DROP FUNCTION IF EXISTS alerting._check_cron(TEXT)")
     op.execute("DROP FUNCTION IF EXISTS alerting._check_channel(TEXT)")

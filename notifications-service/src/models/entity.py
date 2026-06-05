@@ -56,11 +56,14 @@ class NotificationTask(Base):
     __tablename__ = "notification_tasks"
     __table_args__ = (
         UniqueConstraint("idempotency_key", name="uq_notification_tasks_idempotency_key"),
+        UniqueConstraint("code", name="uq_notification_tasks_code"),
         Index("ix_notification_tasks_next_run", "is_enabled", "next_run_at"),
         {"schema": SCHEMA},
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # человекочитаемый бизнес-ключ; NULL у одноразовых/программных рассылок
+    code = Column(String(64), nullable=True)
     name = Column(String(255), nullable=False)
     template_id = Column(
         UUID(as_uuid=True),

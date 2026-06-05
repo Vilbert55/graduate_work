@@ -136,8 +136,7 @@ SELECT alerting.adm_create_rule(
 ## 6. Тестовый прогон без рассылки — dry-run (DBeaver, Postgres)
 
 ```sql
-SELECT alerting.adm_dry_run_rule(
-    (SELECT id FROM alerting.t_rules WHERE code='winback_active_user'));
+SELECT alerting.adm_dry_run_rule('winback_active_user');
 -- через 1-2 сек:
 SELECT status, matched_users, after_cap_users, dispatched_users, error
 FROM alerting.v_runs ORDER BY started_at DESC LIMIT 1;
@@ -151,8 +150,7 @@ FROM alerting.v_runs ORDER BY started_at DESC LIMIT 1;
 ## 7. Боевой запуск — рассылка (DBeaver, Postgres)
 
 ```sql
-SELECT alerting.adm_trigger_rule(
-    (SELECT id FROM alerting.t_rules WHERE code='winback_active_user'));
+SELECT alerting.adm_trigger_rule('winback_active_user');
 -- через 1-2 сек:
 SELECT status, matched_users, dispatched_users, duration_ms, notification_task_id
 FROM alerting.v_runs ORDER BY started_at DESC LIMIT 1;
@@ -225,7 +223,7 @@ SELECT * FROM ugc_analytics.mv_user_activity LIMIT 50;
 
 ```sql
 -- Postgres: удалить демо-правило
-SELECT alerting.adm_delete_rule((SELECT id FROM alerting.t_rules WHERE code='winback_active_user'));
+SELECT alerting.adm_delete_rule('winback_active_user');
 ```
 Mailpit чистится кнопкой «Delete all». `seed-users`/`trigger-events` идемпотентны —
 можно просто прогнать шаги 2–8 заново. Полный сброс — `docker compose down -v && up --build`.

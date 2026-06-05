@@ -1,7 +1,7 @@
--- notifications.svc_send_user_event — API для других сервисов:
+-- notifications._send_user_event — API для других сервисов:
 -- одно сообщение конкретному пользователю по коду шаблона.
 -- Фасад над adm_create_task: формирует audience автоматически.
-CREATE OR REPLACE FUNCTION notifications.svc_send_user_event(
+CREATE OR REPLACE FUNCTION notifications._send_user_event(
     p_user_id         UUID,
     p_template_code   TEXT,
     p_channel         TEXT   DEFAULT 'email',
@@ -36,7 +36,7 @@ $$;
 
 -- @statement
 
-COMMENT ON FUNCTION notifications.svc_send_user_event(UUID, TEXT, TEXT, JSONB, TEXT, TEXT) IS
+COMMENT ON FUNCTION notifications._send_user_event(UUID, TEXT, TEXT, JSONB, TEXT, TEXT) IS
 'Отправить одно уведомление конкретному пользователю. Фасад над adm_create_task.
 Предназначена для вызова из других бэкенд-сервисов (auth, billing и др.).
 
@@ -52,5 +52,5 @@ COMMENT ON FUNCTION notifications.svc_send_user_event(UUID, TEXT, TEXT, JSONB, T
 
 -- @statement
 
-REVOKE EXECUTE ON FUNCTION notifications.svc_send_user_event(UUID, TEXT, TEXT, JSONB, TEXT, TEXT)
+REVOKE EXECUTE ON FUNCTION notifications._send_user_event(UUID, TEXT, TEXT, JSONB, TEXT, TEXT)
     FROM PUBLIC;

@@ -24,7 +24,7 @@ LEFT JOIN notifications.t_tasks t ON t.id = m.task_id;
 
 COMMENT ON VIEW notifications.v_messages IS
 'Журнал сообщений: статусы, попытки, ошибки. Доступно роли notification_admin.
-Колонка body намеренно исключена — для просмотра тела использовать svc_get_messages_for_user.';
+Колонка body намеренно исключена — для просмотра тела использовать _get_messages_for_user.';
 
 -- @statement
 

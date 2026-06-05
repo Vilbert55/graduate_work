@@ -597,19 +597,31 @@ services:
     entrypoint: ["/bin/bash", "-c"]
     command:
       - |
-        echo "Waiting for StarRocks MySQL port..."
-        until mysql -h movies-starrocks -P 9030 -uroot -e "SELECT 1" &> /dev/null; do
-            sleep 2
+        SR="mysql -h movies-starrocks -P 9030 -uroot"
+
+        echo "Ждём порт StarRocks..."
+        until $$SR -e "SELECT 1" &> /dev/null; do sleep 2; done
+
+        echo "Ждём живой BE..."
+        until $$SR -e "SHOW BACKENDS\G" 2>/dev/null | grep -q "Alive: true"; do sleep 5; done
+
+        # Сразу после старта BE уже отвечает на DDL, но routine-load-планировщик FE
+        # ещё может видеть 0 живых BE и тогда CREATE ROUTINE LOAD падает с
+        # "we only support 0*N tasks". Поэтому прогоняем init.sql в цикле, пока эта
+        # ошибка не исчезнет. --force => повторный прогон идемпотентен (IF NOT EXISTS
+        # для таблицы + проглатывание "already exists" для уже созданных заданий).
+        echo "Применяем init.sql..."
+        for attempt in $$(seq 1 30); do
+            out=$$($$SR --force < /init.sql 2>&1)
+            if echo "$$out" | grep -q "we only support 0"; then
+                echo "BE ещё не планируется (попытка $$attempt), повтор..."
+                sleep 5
+            else
+                echo "$$out"
+                break
+            fi
         done
-        echo "MySQL port is open. Waiting for BE to be ready..."
-        # Ждём, пока в SHOW BACKENDS не появится Alive = true
-        until mysql -h movies-starrocks -P 9030 -uroot -e "SHOW BACKENDS\G" 2>/dev/null | grep -q "Alive: true"; do
-            echo "BE not ready yet, waiting..."
-            sleep 5
-        done
-        echo "BE is ready. Executing init.sql..."
-        mysql -h movies-starrocks -P 9030 -uroot < /init.sql
-        echo "Initialization finished."
+        echo "Инициализация завершена."
     depends_on:
       movies-starrocks:
         condition: service_healthy
