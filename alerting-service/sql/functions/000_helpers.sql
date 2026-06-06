@@ -120,8 +120,7 @@ AS $$
 DECLARE
     v_run_id UUID;
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM alerting.t_rules
-                    WHERE id = p_rule_id AND is_deleted = FALSE) THEN
+    IF NOT EXISTS (SELECT 1 FROM alerting.t_rules WHERE id = p_rule_id) THEN
         RAISE EXCEPTION 'rule_not_found: %', p_rule_id;
     END IF;
 
@@ -142,8 +141,7 @@ $$;
 -- adm_*-функциям принимать code (его администратор и так держит в голове после
 -- adm_create_rule), а не длинный uuid. code — глобально уникальный и неизменяемый
 -- бизнес-ключ (uq_t_rules_code), поэтому однозначно адресует правило.
--- Мягко удалённые правила не находятся: их code занят, но операции над ними
--- бессмысленны — отдаём rule_not_found, как и раньше.
+-- Если правила нет (или его удалили) — отдаём rule_not_found.
 CREATE OR REPLACE FUNCTION alerting._rule_id(p_rule_code TEXT)
 RETURNS UUID
 LANGUAGE plpgsql
@@ -154,7 +152,7 @@ DECLARE
 BEGIN
     SELECT id INTO v_rule_id
       FROM alerting.t_rules
-     WHERE code = p_rule_code AND is_deleted = FALSE;
+     WHERE code = p_rule_code;
 
     IF v_rule_id IS NULL THEN
         RAISE EXCEPTION 'rule_not_found: %', p_rule_code;

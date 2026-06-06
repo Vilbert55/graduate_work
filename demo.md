@@ -5,8 +5,7 @@
 Правилами управляют SQL-функциями в Postgres, аудиторию выбирают в StarRocks,
 письма доставляет существующий `notifications-service`.
 
-Подробный вариант с пояснениями — `cheatsheets/demo_full.md`. Готовые запросы —
-`alerting-service/examples.sql`.
+Готовые запросы - `alerting-service/examples.sql`.
 
 ## Контур
 
@@ -53,28 +52,23 @@ docker compose --profile demo run --rm movies-demo-tools \
 
 ## 2. Обновить витрины StarRocks (`starrocks-root`)
 
-В демо не ждём часовой `SUBMIT TASK` — синхронизируем вручную (полный блок —
-`examples.sql` §7):
+Витрины win-back (`mv_user_activity`, `mv_user_top_genres`) считаются по
+`user_events` + `dim_films` (их уже наполнил init-контейнер). В демо не ждём
+асинхронный пересчёт - пересчитываем витрины вручную:
 
 ```sql
 USE ugc_analytics;
-INSERT OVERWRITE dim_users
-SELECT CAST(u.id AS VARCHAR(36)), u.gender, u.age, u.country,
-       concat_ws('_', coalesce(u.gender,'X'),
-           CASE WHEN u.age IS NULL THEN 'X' WHEN u.age<18 THEN '0-17'
-                WHEN u.age<=24 THEN '18-24' WHEN u.age<=34 THEN '25-34'
-                WHEN u.age<=44 THEN '35-44' WHEN u.age<=54 THEN '45-54'
-                ELSE '55+' END, coalesce(u.country,'X')),
-       u.created_at, u.is_demo
-FROM pg_catalog.auth.users u;
 REFRESH MATERIALIZED VIEW mv_user_activity   WITH SYNC MODE;
 REFRESH MATERIALIZED VIEW mv_user_top_genres WITH SYNC MODE;
 ```
 
+`dim_users` для win-back не нужен (его читают только сегментные сценарии);
+обновление измерений из Postgres - `examples.sql` §7.
+
 ## 3. Зарегистрировать правило (`movies-pg`)
 
 SQL правила обязан вернуть `user_id` и опционально `context` (JSON для подстановки
-в письмо). Полный текст — `examples.sql` §1.
+в письмо). Полный текст - `examples.sql` §1.
 
 ```sql
 SELECT alerting.adm_create_rule(
@@ -95,16 +89,14 @@ SELECT alerting.adm_create_rule(
 SELECT alerting.adm_enable_rule('winback_active_user');
 ```
 
-Валидация (ФТ-1, НФТ-2) — осмысленная ошибка на некорректном входе:
+Валидация (ФТ-1, НФТ-2) - осмысленная ошибка на некорректном входе:
 
 ```sql
 SELECT alerting.adm_create_rule('x','x','DELETE FROM t','0 9 * * *',
-        'winback_recommendation','email');   -- invalid_sql: must start with SELECT or WITH
+        'winback_recommendation','email');
 ```
 
-Показывает: правило создаётся одной функцией; вход валидируется.
-
-## 4. Тестовый прогон — dry-run (ФТ-5)
+## 4. Тестовый прогон - dry-run (ФТ-5)
 
 ```sql
 SELECT alerting.adm_dry_run_rule('winback_active_user');
@@ -125,10 +117,10 @@ FROM alerting.v_runs WHERE is_dry_run=FALSE ORDER BY started_at DESC LIMIT 1;
 -- success, 20, 20, 20
 ```
 
-Mailpit: 20 писем. Открыть 2–3 — строка с жанрами у каждого своя (его top-3 из
+Mailpit: 20 писем. Открыть 2–3 - строка с жанрами у каждого своя (его top-3 из
 `context`).
 
-Показывает: правило срабатывает и доставляет письма; в каждом письме — личные
+Показывает: правило срабатывает и доставляет письма; в каждом письме - личные
 данные пользователя.
 
 ## 6. Лимит уведомлений (ФТ-3)
@@ -142,16 +134,16 @@ FROM alerting.v_runs WHERE is_dry_run=FALSE ORDER BY started_at DESC LIMIT 1;
 
 Mailpit: новых писем нет.
 
-Показывает: сработал `per_rule_per_user_days=30` — повторно те же пользователи
+Показывает: сработал `per_rule_per_user_days=30` - повторно те же пользователи
 письмо не получают.
 
-## 7. Замыкание петли — переход по ссылке из письма
+## 7. "Замыкание петли" - переход по ссылке из письма
 
 В каждом письме персональная ссылка `GET /ugc/email/click`. Клик публикует событие
 `recommendation` (`action=clicked`) в Kafka -> `user_events`. Журнал отправок
 копируется в StarRocks (`dispatch_log`), витрина `mv_rule_conversion` строит воронку.
 
-Шаг 1 — пустая воронка (`starrocks-root`):
+Шаг 1 - пустая воронка (`starrocks-root`):
 
 ```sql
 USE ugc_analytics;
@@ -172,35 +164,26 @@ SELECT 'перешли по ссылке', clicked_users
 FROM ugc_analytics.mv_rule_conversion WHERE rule_code='winback_active_user';
 ```
 
-Шаг 2 — в Mailpit открыть несколько писем и нажать ссылку «Открыть подборку».
+Шаг 2 - в Mailpit открыть несколько писем и нажать ссылку «Открыть подборку».
+В Kafka UI (`http://localhost:8081`) топик `recommendations` наполнится ровно на
+число кликов - переходы реально прошли через шину.
 
-Шаг 3 — пересчитать витрину и нажать RUN на чарте:
+Шаг 3 - пересчитать витрину и нажать RUN на чарте:
 
 ```sql
 REFRESH MATERIALIZED VIEW mv_rule_conversion WITH SYNC MODE;
 ```
 
-Показывает: контур замкнулся — виден реальный отклик на письма. Повторный клик по
+Показывает: контур замкнулся - виден реальный отклик на письма. Повторный клик по
 той же ссылке дубля не создаёт (`request_id = uuid5(rule, run, user)`).
 
-## 8. Надёжность (рассказать словами)
-
-- **История и партиции (ФТ-8).** `alerting.t_dispatch_history` партиционирована по
-  неделям; `alerting.maint_dispatch_partitions(N)` нарезает текущую и следующую
-  неделю и дропает старше retention. Это основа лимита и журнал для аудита.
-- **Восстановление после сбоя (НФТ-3).** Срабатывание идёт тремя фазами; запись
-  истории, создание задачи и финализация — в одной транзакции. Пока запуск
-  `running`, по нему ничего не закоммичено: при старте движок дозавершает такие
-  запуски с тем же `run_id`, дублей нет.
 
 ---
 
 ## Сброс перед повторным показом
 
 ```sql
-SELECT alerting.adm_delete_rule('winback_active_user');   -- мягкое удаление
+SELECT alerting.adm_delete_rule('winback_active_user');
 ```
-
-Mailpit — «Delete all». `seed-users` / `trigger-events` идемпотентны, повторный
-клик по ссылке дубля не создаёт. Полный сброс стенда — `docker compose down -v`
-и `up --build` (для demo-tools — `--profile demo build`).
+Полный сброс стенда - `docker compose down -v`
+и `up --build` (для demo-tools - `--profile demo build`).

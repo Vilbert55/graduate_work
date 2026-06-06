@@ -486,7 +486,7 @@ docker compose --profile demo run --rm movies-demo-tools \
 
 ```sql
 -- подключение movies-pg
-SELECT alerting.adm_delete_rule('winback_active_user');   -- мягкое удаление
+SELECT alerting.adm_delete_rule('winback_active_user');   -- полное удаление (правило + история)
 ```
 Mailpit чистится кнопкой «Delete all». `seed-users`/`trigger-events` идемпотентны,
 а повторный клик по ссылке из письма не создаёт дубля (детерминированный

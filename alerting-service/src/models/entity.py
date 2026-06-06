@@ -45,7 +45,6 @@ class Rule(Base):
     frequency_cap = Column(JSONB, nullable=False, default=dict)
     max_users = Column(Integer, nullable=False, default=50000)
     is_enabled = Column(Boolean, nullable=False, default=False)
-    is_deleted = Column(Boolean, nullable=False, default=False)
     status = Column(Text, nullable=False, default="active")
     last_validation_error = Column(Text, nullable=True)
     next_run_at = Column(DateTime, nullable=True)

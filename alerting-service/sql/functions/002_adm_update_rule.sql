@@ -42,7 +42,7 @@ BEGIN
         max_users        = COALESCE(p_max_users, max_users),
         description      = COALESCE(p_description, description),
         updated_at       = (now() AT TIME ZONE 'utc')
-    WHERE id = v_rule_id AND is_deleted = FALSE;
+    WHERE id = v_rule_id;
 
     IF NOT FOUND THEN
         RAISE EXCEPTION 'rule_not_found: %', p_rule_code;
@@ -54,7 +54,7 @@ $$;
 
 COMMENT ON FUNCTION alerting.adm_update_rule(TEXT, TEXT, TEXT, TEXT, TEXT, JSONB, INTEGER, TEXT) IS
 'Изменить параметры правила (адресуется по code). NULL-аргументы оставляют поля
-без изменений. Бросает rule_not_found если правило не существует или мягко удалено.';
+без изменений. Бросает rule_not_found если правило не существует.';
 
 -- @statement
 

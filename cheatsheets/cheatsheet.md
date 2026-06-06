@@ -1,20 +1,14 @@
 # Шпаргалка по дипломной части (alerting-service)
 
-Личная памятка: как всё устроено end-to-end, какая функция что вызывает, где что
-лежит. Дипломная часть — это **closed-loop alerting**: аналитик пишет SQL-правило
-поверх StarRocks, движок по расписанию выполняет его и через `notifications-service`
-шлёт письма. Управление — SQL-функциями в Postgres (DBeaver), без HTTP-API.
 
----
+## 1. Общее
 
-## 1. Одним абзацем
-
-Между двумя уже готовыми частями платформы — потоком событий
+Между двумя уже готовыми частями платформы - потоком событий
 (`activity-tracker -> Kafka -> StarRocks`) и доставкой писем
-(`notifications-service`) — не хватало звена «данные -> действие». Его закрывает
+(`notifications-service`) - не хватало звена «данные -> действие». Его закрывает
 `alerting-service`: аналитик регистрирует правило (`SELECT user_id, context FROM mv_*`),
 а движок по cron каждого правила выполняет запрос в StarRocks, применяет лимиты,
-пишет историю и создаёт задачу на рассылку. Маркетолог-оператор из цикла убран —
+пишет историю и создаёт задачу на рассылку. Маркетолог-оператор из цикла убран -
 отсюда часы вместо дней на запуск рассылки.
 
 ---
@@ -24,8 +18,8 @@
 | Компонент | Роль | Отношение к диплому |
 |---|---|---|
 | **admin-panel (Django)** | Управление фильмами/жанрами/персонами в Postgres `content` | Источник для `dim_films/dim_genres/dim_date` |
-| **films-etl-service** | ETL `Postgres content -> Elasticsearch` | — (не диплом) |
-| **films-search-service (FastAPI)** | Поиск фильмов поверх **Elasticsearch** | — |
+| **films-etl-service** | ETL `Postgres content -> Elasticsearch` | - (не диплом) |
+| **films-search-service (FastAPI)** | Поиск фильмов поверх **Elasticsearch** | - |
 | **auth-service (FastAPI)** | Пользователи, JWT, RBAC. Добавлены поля `gender/age/country/is_demo` | Источник для `dim_users` (сегментация) |
 | **activity-tracker (Flask, UGC)** | Приём событий (`view/click/custom/recommendation`) -> Kafka. Публичный `GET /ugc/email/click` (`track.py`) ловит клик по ссылке из письма | Старт контура (события) **и** замыкание (клик из письма -> recommendation) |
 | **Kafka** | Буфер событий (топики `views/clicks/custom_events/recommendations`) | StarRocks читает их Routine Load |
@@ -40,13 +34,13 @@
 независимые роли, и **ни одна не связана с alerting**:
 1. **Поиск фильмов.** `films-etl-service` льёт данные из Postgres `content` в
    индекс ES; `films-search-service` ищет по нему. Дипломная аналитика идёт через
-   StarRocks, а не ES — это разные хранилища под разные задачи (поиск vs OLAP).
+   StarRocks, а не ES - это разные хранилища под разные задачи (поиск vs OLAP).
 2. **Логи (ELK).** `Filebeat -> Logstash -> Elasticsearch -> Kibana` собирает
    stdout всех контейнеров в индекс `movies-logs-*`. Туда же попадают и
-   JSON-логи alerting-движка — это единственная точка, где диплом «виден» в ES,
+   JSON-логи alerting-движка - это единственная точка, где диплом «виден» в ES,
    и то лишь как строки логов.
 
-Вывод для защиты: **аналитический слой диплома — StarRocks, а не Elasticsearch.**
+Вывод для защиты: **аналитический слой диплома - StarRocks, а не Elasticsearch.**
 
 ---
 
@@ -65,18 +59,18 @@ seed-users -> trigger-events -> Kafka -> Routine Load -> user_events (StarRocks)
    -> dispatch_log + mv_rule_conversion -> воронка «отправили -> перешли по ссылке» в Superset
 ```
 
-Последние строки — замыкание петли: в письме персональная ссылка
+Последние строки - замыкание петли: в письме персональная ссылка
 `http://localhost/ugc/email/click?rule=<код>&user=<uuid>&run=<id>`; клик дёргает
 публичный эндпоинт `activity-tracker-service/src/api/v1/track.py`, тот шлёт событие
 `recommendation` (`action=clicked`) в Kafka -> оно возвращается в `user_events`.
 Журнал отправок копируется в StarRocks (`dispatch_log`), и `mv_rule_conversion`
 показывает, сколько людей реально перешли по ссылке. Идемпотентность: `request_id`
-= `uuid5(rule, run, user)` — повтор клика по той же ссылке дубля не создаёт, а новое
+= `uuid5(rule, run, user)` - повтор клика по той же ссылке дубля не создаёт, а новое
 срабатывание правила (новый `run`) даёт новую ссылку (отдельный переход).
 
 ---
 
-## 4. Граф вызовов движка (кто кого зовёт)
+## 4. Граф вызовов движка
 
 Точка входа: `python -m src.workers.main` -> `engine.run()`.
 
@@ -144,19 +138,19 @@ _enqueue_rule_run(rule_id, kind):
 
 ## 5. SQL-API правил (что вызывает аналитик в DBeaver)
 
-Все под ролью `alerting_admin`. Файлы — `alerting-service/sql/functions/`.
+Все под ролью `alerting_admin`. Файлы - `alerting-service/sql/functions/`.
 
 | Функция | Что делает | Валидация |
 |---|---|---|
 | `adm_create_rule(...)` | Создать правило (идемпотентна по `p_idempotency_key`) | `_check_rule_sql`, `_check_channel`, `_check_cron`, `_check_frequency_cap`, `max_users>0`, шаблон существует |
 | `adm_update_rule(...)` | Изменить (NULL-аргумент = не менять) | те же проверки на непустые поля |
-| `adm_enable_rule` / `adm_disable_rule` | Вкл/выкл (движок подхватит на `_sync_jobs`) | — |
-| `adm_delete_rule` | Мягкое удаление (`is_deleted=TRUE`) | — |
-| `adm_dry_run_rule` | Тестовый прогон: SQL + размер аудитории до/после лимита, **без рассылки** | — |
-| `adm_trigger_rule` | Ручной запуск вне расписания | — |
+| `adm_enable_rule` / `adm_disable_rule` | Вкл/выкл (движок подхватит на `_sync_jobs`) | - |
+| `adm_delete_rule` | Полное удаление: правило + история | - |
+| `adm_dry_run_rule` | Тестовый прогон: SQL + размер аудитории до/после лимита, **без рассылки** | - |
+| `adm_trigger_rule` | Ручной запуск вне расписания | - |
 
 Мониторинг (вьюхи): `v_rules` (каталог + отправки за 24ч), `v_runs` (история
-запусков), `v_dispatch` (журнал отправок). Готовые вызовы — `examples.sql`.
+запусков), `v_dispatch` (журнал отправок). Готовые вызовы - `examples.sql`.
 
 **Контракт SQL правила:** обязан вернуть колонку `user_id`, опционально `context`
 (JSON-объект). `context` собирают через `to_json(named_struct('k', v, ...))`:
@@ -169,46 +163,46 @@ _enqueue_rule_run(rule_id, kind):
 Файлы: `starrocks_init/init.sql` (события) и `starrocks_dims_init/init.sql`
 (измерения, MV, роль).
 
-- **`user_events`** — PK-таблица `(request_id, event_type)`. Дедупликация встроена
+- **`user_events`** - PK-таблица `(request_id, event_type)`. Дедупликация встроена
   (REPLACE при конфликте PK), поэтому правила свободно считают `count(DISTINCT user_id)`.
   Наполняется **Routine Load** из Kafka: 4 задания (`views/clicks/custom/recommendations`),
-  каждое читает свой топик. НЕ партиционирована — обычная HASH-раздача по бакетам.
-- **`dim_films / dim_users / dim_genres / dim_date`** — PK-таблицы, наполняются из
+  каждое читает свой топик. НЕ партиционирована - обычная HASH-раздача по бакетам.
+- **`dim_films / dim_users / dim_genres / dim_date`** - PK-таблицы, наполняются из
   Postgres через **JDBC Catalog** `pg_catalog` (внешний каталог: StarRocks читает
-  Postgres как свои таблицы) командой `INSERT OVERWRITE`. Регулярность — нативный
+  Postgres как свои таблицы) командой `INSERT OVERWRITE`. Регулярность - нативный
   `SUBMIT TASK ... SCHEDULE EVERY 1 HOUR` внутри StarRocks (отдельного Python-ETL нет).
-- **`dispatch_log`** — DUPLICATE KEY-таблица, копия `alerting.t_dispatch_history`
+- **`dispatch_log`** - DUPLICATE KEY-таблица, копия `alerting.t_dispatch_history`
   (журнал отправок) тем же JDBC-механизмом, что и `dim_*` (джойн с `t_rules` ради
   `rule_code`). Нужна, чтобы посчитать отклик: «сколько отправили» живёт в Postgres,
   а Superset/правила ходят только в StarRocks. `SUBMIT TASK sync_dispatch_log`.
-- **`mv_*`** — 6 materialized views (`mv_user_activity`, `mv_user_top_genres`,
+- **`mv_*`** - 6 materialized views (`mv_user_activity`, `mv_user_top_genres`,
   `mv_segment_film_activity`, `mv_film_watch_hourly`, `mv_weekend_film_activity`,
-  `mv_rule_conversion`), `REFRESH ASYNC` — StarRocks сам пересчитывает их при
+  `mv_rule_conversion`), `REFRESH ASYNC` - StarRocks сам пересчитывает их при
   изменении источников. `mv_rule_conversion` = воронка (dispatch_log LEFT JOIN
   переходы `event_type=recommendation, action=clicked`): отправили -> перешли по
   ссылке, по каждому правилу.
-- **`alert_reader`** — роль/пользователь только на `SELECT` (на таблицы **и** MV).
+- **`alert_reader`** - роль/пользователь только на `SELECT` (на таблицы **и** MV).
   Под ней ходит движок. Это защита: правило аналитика физически не может ничего
   изменить в StarRocks.
 
 Почему **в демо** обновляем измерения вручную: `SUBMIT TASK` идёт раз в час, ждать
 нельзя. StarRocks 4.0.8 **не поддерживает** `EXECUTE TASK <имя>`, поэтому повторяем
 тот же `INSERT OVERWRITE` + `REFRESH MATERIALIZED VIEW ... WITH SYNC MODE`
-(готовый блок — `examples.sql` §7, `demo_full.md` §3).
+(готовый блок - `examples.sql` §7, `demo_full.md` §3).
 
 ---
 
-## 7. Frequency cap — два уровня (ФТ-3)
+## 7. Frequency cap - два уровня (ФТ-3)
 
-Чистая логика в `executor.py`, запросы к истории — там же в `_blocked_by_cap`.
+Чистая логика в `executor.py`, запросы к истории - там же в `_blocked_by_cap`.
 
 | Уровень | Откуда значение | Что ограничивает | SQL-условие |
 |---|---|---|---|
 | `per_rule_per_user_days` | из правила (`frequency_cap`) | не слать одному юзеру это правило чаще раза в N дней | по `rule_id` + `sent_at > now - N дней` |
 | `per_user_per_day` | **глобальная настройка движка** `ALERTING_GLOBAL_PER_USER_PER_DAY` | общий потолок писем на юзера в сутки по ВСЕМ правилам | без `rule_id`, `sent_at >= начало суток`, `count >= M` |
 
-**Важный нюанс (почему глобальный потолок — настройка, а не поле правила):**
-«общий потолок» по смыслу один на весь сервис (ФТ-3/R8 — защита от перекрытия
+**Важный нюанс (почему глобальный потолок - настройка, а не поле правила):**
+«общий потолок» по смыслу один на весь сервис (ФТ-3/R8 - защита от перекрытия
 правил). Если бы он лежал в каждом правиле, при правилах с разными значениями
 (1 и 3) фактический потолок «плавал» бы в зависимости от того, какое правило сейчас
 сработало. Поэтому он вынесен в одну настройку движка; в `frequency_cap` правила
@@ -222,19 +216,19 @@ JSONB правила, `per_user_per_day` из настройки. `is_empty` -> 
 
 ## 8. Атомарность, идемпотентность, recovery (НФТ-3)
 
-Схемы `alerting` и `notifications` — в одной БД `movies`, движок ходит под
+Схемы `alerting` и `notifications` - в одной БД `movies`, движок ходит под
 `postgres`. Поэтому шаги «cap -> история -> `adm_create_task` -> финализация
 запуска» сведены в **одну транзакцию** (фаза 3 в `execute_rule`).
 
 - **Идемпотентность/recovery:** пока запуск в статусе `running`, по нему ничего не
   закоммичено. При сбое движок на старте (`_recover_interrupted_runs`) берёт
   `running`-запуски старше `recovery_grace_sec` и повторяет `execute_rule` с тем же
-  `run_id` — дублей нет.
+  `run_id` - дублей нет.
 - **Вторая страховка:** ключ `alerting:{rule_id}:{run_id}` в `adm_create_task`.
   Даже двойное восстановление вернёт ту же задачу, второго письма не будет.
 - **dry-run не «дошлётся»:** `t_runs.is_dry_run=TRUE`; recovery берёт только боевые
   запуски.
-- Выборка из StarRocks — ДО транзакции, чтобы внешний запрос не держал блокировку.
+- Выборка из StarRocks - ДО транзакции, чтобы внешний запрос не держал блокировку.
 
 ---
 
@@ -243,7 +237,7 @@ JSONB правила, `per_user_per_day` из настройки. `is_empty` -> 
 `t_dispatch_history` (журнал отправок и основа cap) **в Postgres** нарезана по
 неделям. Где это задаётся и как обслуживается:
 
-- **Где задаётся «по неделям»:** в миграции `alembic/versions/0001_initial.py` —
+- **Где задаётся «по неделям»:** в миграции `alembic/versions/0001_initial.py` -
   таблица создаётся как `... PARTITION BY RANGE (sent_at)` (raw DDL, т.к.
   `op.create_table` не умеет PARTITION BY).
 - **Где нарезаются сами партиции:** функция `alerting.maint_dispatch_partitions(N)`
@@ -253,21 +247,21 @@ JSONB правила, `per_user_per_day` из настройки. `is_empty` -> 
   `now - retention`.
 - **Как обслуживается:** движок зовёт её при старте и затем по cron «5 0 * * *»
   (раз в сутки), retention из `ALERTING_DISPATCH_RETENTION_DAYS` (90). Первая
-  нарезка — прямо в миграции (`SELECT alerting.maint_dispatch_partitions(90)`).
+  нарезка - прямо в миграции (`SELECT alerting.maint_dispatch_partitions(90)`).
 
-> NB для защиты: автонарезка по неделям — на стороне **Postgres** (`t_dispatch_history`).
+> NB для защиты: автонарезка по неделям - на стороне **Postgres** (`t_dispatch_history`).
 > В StarRocks `user_events` партиционирования нет (PK + HASH). Не перепутать.
 
 ---
 
 ## 10. Валидация правил (ФТ-1, НФТ-2)
 
-- **`p_sql`** — статические проверки в `_check_rule_sql` (`000_helpers.sql`):
+- **`p_sql`** - статические проверки в `_check_rule_sql` (`000_helpers.sql`):
   запрос на чтение (`^SELECT|WITH`), один оператор (нет `;` кроме хвоста), есть
-  `user_id`. Полноценный EXPLAIN в Postgres-функции невозможен — между Postgres и
+  `user_id`. Полноценный EXPLAIN в Postgres-функции невозможен - между Postgres и
   StarRocks нет соединения. Реальную проверку (что запрос исполним в StarRocks)
-  делает **`adm_dry_run_rule`** — движок реально выполняет SQL под `alert_reader`.
-- **`p_frequency_cap`** — `_check_frequency_cap`: это JSON-объект, единственный
+  делает **`adm_dry_run_rule`** - движок реально выполняет SQL под `alert_reader`.
+- **`p_frequency_cap`** - `_check_frequency_cap`: это JSON-объект, единственный
   допустимый ключ `per_rule_per_user_days` (целое > 0). `per_user_per_day` явно
   отвергается с подсказкой про глобальную настройку.
 - **`p_channel`** (`email|ws`), **`p_cron`** (5 полей), **`p_template_code`**
@@ -286,7 +280,7 @@ JSONB правила, `per_user_per_day` из настройки. `is_empty` -> 
 3. Scheduler notifications (`notifications-service/src/workers/scheduler.py`,
    `_bulk_insert_messages`) при рендере шаблона **мерджит**
    `params_by_user[user_id]` поверх общих `task.params` -> у каждого письма свои
-   подстановки (например, свои top-3 жанра). Для обычных задач ключа нет —
+   подстановки (например, свои top-3 жанра). Для обычных задач ключа нет -
    поведение не меняется (обратносовместимо, ФТ-12).
 4. Шаблон (`sql/seed/001_alerting_templates.sql`) использует `params.top_genres`
    и т.п., с `default(...)` на случай отсутствия.
@@ -299,12 +293,12 @@ JSONB правила, `per_user_per_day` из настройки. `is_empty` -> 
 |---|---|
 | ФТ-1 создание правила одной функцией + валидация | `adm_create_rule` + `_check_*` хелперы |
 | ФТ-2 per-user context в письмо | `executor._create_notification_task` + `notifications/scheduler._bulk_insert_messages` |
-| ФТ-3 двухуровневый cap | `executor.FrequencyCap` + `_blocked_by_cap`; глобальный уровень — `ALERTING_GLOBAL_PER_USER_PER_DAY` |
+| ФТ-3 двухуровневый cap | `executor.FrequencyCap` + `_blocked_by_cap`; глобальный уровень - `ALERTING_GLOBAL_PER_USER_PER_DAY` |
 | ФТ-5 dry-run | `adm_dry_run_rule` -> `execute_rule(dry_run=True)` |
 | ФТ-6/7 ручной запуск, журнал | `adm_trigger_rule`, `t_runs` / `v_runs` |
 | ФТ-8 история доставки + партиции/retention | `t_dispatch_history` + `maint_dispatch_partitions` |
 | ФТ-10 синхронизация dim_* средствами StarRocks | `starrocks_dims_init` JDBC Catalog + `SUBMIT TASK` |
-| ФТ-11 BI-дашборды | Superset поверх `mv_*`; главный чарт — воронка «отправили -> перешли по ссылке» (`mv_rule_conversion`) |
+| ФТ-11 BI-дашборды | Superset поверх `mv_*`; главный чарт - воронка «отправили -> перешли по ссылке» (`mv_rule_conversion`) |
 | Замыкание петли | ссылка в письме (`001_alerting_templates.sql`) -> клик -> `GET /ugc/email/click` (`track.py`, идемпотентно по uuid5 rule+user) -> recommendation -> `dispatch_log` + `mv_rule_conversion` |
 | ФТ-12 notifications не ломаем | только `adm_create_task`/`adm_upsert_template` + опциональный `params_by_user` |
 | НФТ-3 надёжность/recovery | атомарная фаза 3 + `_recover_interrupted_runs` + идемпотентный ключ |
@@ -317,7 +311,7 @@ JSONB правила, `per_user_per_day` из настройки. `is_empty` -> 
 
 ## 13. Гочи (на чём спотыкался)
 
-- **StarRocks 4.0.8 не поддерживает `EXECUTE TASK <имя>`** — для ручного обновления
+- **StarRocks 4.0.8 не поддерживает `EXECUTE TASK <имя>`** - для ручного обновления
   dim повторяем `INSERT OVERWRITE` из `SUBMIT TASK`, затем `REFRESH ... WITH SYNC MODE`.
 - **`json_object` в StarRocks не берёт ARRAY** -> используем `to_json(named_struct(...))`.
 - **Диск StarRocks:** при заполнении `> storage_high_watermark_usage_percent` (95%)
@@ -328,7 +322,7 @@ JSONB правила, `per_user_per_day` из настройки. `is_empty` -> 
 - **Порядок миграций:** `movies-alerting-migrations` зависит от
   `movies-notifications-migrations` (шаблоны через `notifications.adm_upsert_template`).
   Ручной up в обход `depends_on` ломает порядок.
-- **ruff не запинен** (latest + preview) — периодически валит CI новыми правилами.
+- **ruff не запинен** (latest + preview) - периодически валит CI новыми правилами.
   Конфиги: корневой `ruff.toml` + по одному в некоторых сервисах (nearest-config-wins);
   `tests/` и `alembic/` из линта исключены.
 
@@ -362,4 +356,4 @@ docker exec movies-db psql -U postgres -d movies -c "\df alerting.adm_*"
 cd alerting-service && poetry run pytest -q
 ```
 
-Доступы и пошаговый сценарий показа — `demo_full.md` (рядом). Готовые SQL — `examples.sql`.
+Доступы и пошаговый сценарий показа - `demo_full.md` (рядом). Готовые SQL - `examples.sql`.

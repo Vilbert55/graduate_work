@@ -60,7 +60,7 @@ async def _sync_jobs(scheduler: AsyncIOScheduler) -> None:
     # 1. Берём из БД все правила, которые должны работать (включены и не удалены).
     async with async_session_maker() as session:
         result = await session.execute(
-            select(Rule).where(Rule.is_enabled.is_(True), Rule.is_deleted.is_(False)),
+            select(Rule).where(Rule.is_enabled.is_(True)),
         )
         rules: list[Rule] = list(result.scalars().all())
 

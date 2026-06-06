@@ -311,7 +311,7 @@ async def _load_rule(session: AsyncSession, rule_id: uuid.UUID) -> dict[str, Any
     result = await session.execute(
         text(
             "SELECT code, sql_query, template_code, channel, max_users, frequency_cap "
-            "FROM alerting.t_rules WHERE id = :rid AND is_deleted = FALSE",
+            "FROM alerting.t_rules WHERE id = :rid",
         ),
         {"rid": rule_id},
     )

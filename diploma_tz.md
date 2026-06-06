@@ -64,7 +64,7 @@ Mindbox, Sendsay, RetentionRocket (Россия), Customer.io, Braze, Klaviyo, B
 | ФТ-1  | Аналитик создаёт правило одной SQL-функцией `alerting.adm_create_rule(...)`. Параметры — текст SQL-запроса, расписание, шаблон уведомления, канал доставки, лимиты. Все параметры валидируются. |
 | ФТ-2  | SQL правила обязан возвращать колонку `user_id` и опционально `context` (JSON с данными для подстановки в шаблон). |
 | ФТ-3  | Двухуровневый лимит уведомлений: минимальный интервал между сообщениями от одного правила одному пользователю (per-rule) + общий потолок сообщений на пользователя в сутки по всем правилам (единая настройка движка). |
-| ФТ-4  | Управление правилом: обновление, включение/выключение, мягкое удаление. |
+| ФТ-4  | Управление правилом: обновление, включение/выключение, удаление. |
 | ФТ-5  | Тестовый прогон правила — выполнить SQL без рассылки и вернуть размер аудитории до и после применения лимита, плюс несколько `user_id` для проверки. |
 | ФТ-6  | Ручной запуск правила вне расписания. |
 | ФТ-7  | Движок по расписанию каждого активного правила выполняет его SQL в StarRocks, применяет лимит уведомлений и создаёт одну задачу в `notifications-service`. Каждое срабатывание идемпотентно: повтор после сбоя не создаёт дублей. |
@@ -180,7 +180,7 @@ Mindbox, Sendsay, RetentionRocket (Россия), Customer.io, Braze, Klaviyo, B
 | `adm_create_rule(p_code, p_description, p_sql, p_cron, p_template_code, p_channel, p_frequency_cap, p_max_users, p_idempotency_key, p_created_by) -> UUID` | Создать правило. Идемпотентна. |
 | `adm_update_rule(p_rule_code, p_sql, p_cron, p_template_code, ...)` | Обновить (`NULL` = не менять). |
 | `adm_enable_rule(p_rule_code)` / `adm_disable_rule(p_rule_code)` | Переключатели. |
-| `adm_delete_rule(p_rule_code)` | Мягкое удаление: `is_deleted = true`. |
+| `adm_delete_rule(p_rule_code)` | Полное удаление правила вместе с историей. |
 | `adm_dry_run_rule(p_rule_code) -> UUID (run_id)` | Тестовый прогон без рассылки. |
 | `adm_trigger_rule(p_rule_code) -> UUID (run_id)` | Ручной запуск сейчас вне расписания. |
 
@@ -248,7 +248,6 @@ CREATE TABLE alerting.t_rules (
     frequency_cap     JSONB NOT NULL DEFAULT '{}',   -- {"per_rule_per_user_days": N}; общий дневной потолок — настройка движка
     max_users         INTEGER NOT NULL DEFAULT 50000,
     is_enabled        BOOLEAN NOT NULL DEFAULT FALSE,
-    is_deleted        BOOLEAN NOT NULL DEFAULT FALSE,
     status            TEXT NOT NULL DEFAULT 'active',  -- active | invalid
     last_validation_error TEXT,
     next_run_at       TIMESTAMP,
@@ -258,7 +257,7 @@ CREATE TABLE alerting.t_rules (
     created_at        TIMESTAMP NOT NULL DEFAULT (now() AT TIME ZONE 'utc'),
     updated_at        TIMESTAMP NOT NULL DEFAULT (now() AT TIME ZONE 'utc')
 );
-CREATE INDEX ON alerting.t_rules (is_enabled, is_deleted, next_run_at);
+CREATE INDEX ON alerting.t_rules (is_enabled, next_run_at);
 
 -- История запусков
 CREATE TABLE alerting.t_runs (

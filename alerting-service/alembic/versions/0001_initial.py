@@ -58,7 +58,6 @@ def upgrade() -> None:
         sa.Column("frequency_cap", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
         sa.Column("max_users", sa.Integer(), nullable=False, server_default="50000"),
         sa.Column("is_enabled", sa.Boolean(), nullable=False, server_default=sa.false()),
-        sa.Column("is_deleted", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("status", sa.Text(), nullable=False, server_default="active"),
         sa.Column("last_validation_error", sa.Text(), nullable=True),
         sa.Column("next_run_at", sa.DateTime(), nullable=True),
@@ -77,7 +76,7 @@ def upgrade() -> None:
     )
     op.create_index(
         "ix_t_rules_next_run", "t_rules",
-        ["is_enabled", "is_deleted", "next_run_at"],
+        ["is_enabled", "next_run_at"],
         schema=SCHEMA,
     )
 

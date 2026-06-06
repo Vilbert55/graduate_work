@@ -59,7 +59,7 @@ WHERE a.was_active_last_month = TRUE
 | `adm_create_rule(...)` | Создать правило (идемпотентна) |
 | `adm_update_rule(...)` | Изменить параметры (NULL = не менять) |
 | `adm_enable_rule` / `adm_disable_rule` | Переключатели |
-| `adm_delete_rule` | Мягкое удаление |
+| `adm_delete_rule` | Полное удаление (правило + история) |
 | `adm_dry_run_rule` | Тестовый прогон: SQL + размер аудитории до/после лимита, без рассылки |
 | `adm_trigger_rule` | Ручной запуск вне расписания |
 

@@ -1,6 +1,6 @@
 <mxfile host="65bd71144e">
     <diagram name="alerting-detail" id="alerting-detail">
-        <mxGraphModel dx="1086" dy="556" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="900" math="0" shadow="0">
+        <mxGraphModel dx="1274" dy="540" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="900" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -10,7 +10,7 @@
                 <mxCell id="legend_new" value="Новое (дипломное)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" parent="1" vertex="1">
                     <mxGeometry x="40" y="820" width="160" height="22" as="geometry"/>
                 </mxCell>
-                <mxCell id="legend_engine" value="alerting-engine (основной артефакт)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+                <mxCell id="legend_engine" value="alerting-engine (дипломное) - сам движок сервиса уведомлений" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
                     <mxGeometry x="210" y="820" width="240" height="22" as="geometry"/>
                 </mxCell>
                 <mxCell id="legend_ext" value="Существующее (не модифицируется)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=10;dashed=1;" parent="1" vertex="1">
@@ -25,7 +25,7 @@
                 <mxCell id="act_bi" value="BI-аналитик&#xa;(браузер)" style="ellipse;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" parent="1" vertex="1">
                     <mxGeometry x="1240" y="80" width="120" height="60" as="geometry"/>
                 </mxCell>
-                <mxCell id="src_pg" value="Postgres movies-db&#xa;content.film_work, auth.users&#xa;(+ миграция nullable-колонок&#xa;в auth.users для сегментации)" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=10;boundedLbl=1;backgroundOutline=1;size=15;dashed=1;" parent="1" vertex="1">
+                <mxCell id="src_pg" value="&lt;b&gt;Postgres movies-db&lt;br&gt;content.film_work, auth.users&lt;/b&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=10;boundedLbl=1;backgroundOutline=1;size=15;dashed=1;" parent="1" vertex="1">
                     <mxGeometry x="40" y="200" width="220" height="90" as="geometry"/>
                 </mxCell>
                 <mxCell id="src_kafka" value="Kafka&#xa;(события пользователей)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=10;dashed=1;" parent="1" vertex="1">
@@ -47,7 +47,7 @@
                     <mxGeometry x="400" y="455" width="340" height="20" as="geometry"/>
                 </mxCell>
                 <mxCell id="eng" value="alerting-engine (Python)&#xa;&#xa;• Планировщик (APScheduler) — по cron каждого правила&#xa;• Исполнитель SQL в StarRocks (тайм-аут, потолок выборки)&#xa;• Проверка лимита уведомлений&#xa;• Создание задачи в notifications (одна транзакция,&#xa;  идемпотентный ключ alerting:{rule_id}:{run_id})&#xa;• Восстановление прерванных запусков на старте&#xa;• Счётчики и метрики — структурированными логами в ELK" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=3;fontSize=10;align=left;spacingLeft=12;spacingTop=8;verticalAlign=top;fontStyle=0;" parent="1" vertex="1">
-                    <mxGeometry x="880" y="170" width="380" height="240" as="geometry"/>
+                    <mxGeometry x="880" y="168" width="380" height="240" as="geometry"/>
                 </mxCell>
                 <mxCell id="ext_notif" value="notifications-service&#xa;adm_create_task(...) / adm_upsert_template(...)&#xa;(существует, не модифицируется)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=10;dashed=1;" parent="1" vertex="1">
                     <mxGeometry x="880" y="450" width="380" height="70" as="geometry"/>
@@ -55,16 +55,16 @@
                 <mxCell id="pg_box" value="Postgres movies-db — новая схема alerting" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#444444;verticalAlign=top;fontSize=12;fontStyle=1;" parent="1" vertex="1">
                     <mxGeometry x="40" y="560" width="1320" height="230" as="geometry"/>
                 </mxCell>
-                <mxCell id="pg_funcs" value="SQL-функции adm_*&#xa;(SECURITY DEFINER, GRANT EXECUTE на alerting_admin)&#xa;&#xa;create_rule / update_rule&#xa;enable_rule / disable_rule&#xa;delete_rule (мягкое)&#xa;dry_run_rule / trigger_rule" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;align=left;spacingLeft=10;spacingTop=8;verticalAlign=top;" parent="1" vertex="1">
+                <mxCell id="pg_funcs" value="SQL-функции adm_*&#xa;(SECURITY DEFINER, GRANT EXECUTE на alerting_admin)&#xa;&#xa;create_rule / update_rule&#xa;enable_rule / disable_rule&#xa;delete_rule&#xa;dry_run_rule / trigger_rule" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;align=left;spacingLeft=10;spacingTop=8;verticalAlign=top;" parent="1" vertex="1">
                     <mxGeometry x="60" y="600" width="380" height="170" as="geometry"/>
                 </mxCell>
                 <mxCell id="pg_views" value="Представления для аудита&#xa;&#xa;v_rules — правила со статусом и расписанием&#xa;v_runs — история срабатываний&#xa;v_dispatch — история отправок&#xa;(только SELECT для alerting_admin)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;align=left;spacingLeft=10;spacingTop=8;verticalAlign=top;" parent="1" vertex="1">
                     <mxGeometry x="470" y="600" width="380" height="170" as="geometry"/>
                 </mxCell>
-                <mxCell id="pg_tables" value="Таблицы (доступ только у движка)&#xa;&#xa;t_rules — правила&#xa;t_runs — история запусков&#xa;t_dispatch_history — отправки (партиции по неделям,&#xa;для лимита уведомлений и аудита)" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;boundedLbl=1;backgroundOutline=1;size=12;align=left;spacingLeft=20;spacingTop=8;verticalAlign=top;" parent="1" vertex="1">
+                <mxCell id="pg_tables" value="Таблицы (доступ только у движка)&lt;br&gt;&lt;br&gt;t_rules — правила&lt;br&gt;t_runs — история запусков&lt;br&gt;t_dispatch_history — отправки (партиции по неделям)" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;boundedLbl=1;backgroundOutline=1;size=12;align=left;spacingLeft=20;spacingTop=8;verticalAlign=top;" parent="1" vertex="1">
                     <mxGeometry x="880" y="600" width="460" height="170" as="geometry"/>
                 </mxCell>
-                <mxCell id="superset" value="Apache Superset&#xa;(дашборды поверх mv_*,&#xa;MySQL-коннектор к StarRocks)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" parent="1" vertex="1">
+                <mxCell id="superset" value="Apache Superset&lt;br&gt;чарты поверх мат. вью (mv_*),&lt;br&gt;MySQL-коннектор к StarRocks)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" parent="1" vertex="1">
                     <mxGeometry x="1180" y="240" width="180" height="70" as="geometry"/>
                 </mxCell>
                 <mxCell id="demo_tools" value="Утилиты для демонстрации (Python CLI)&#xa;demo-seeder — демо-юзеры в auth.users&#xa;event-trigger — события в Kafka" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;dashed=1;" parent="1" vertex="1">

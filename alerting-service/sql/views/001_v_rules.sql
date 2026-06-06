@@ -5,7 +5,6 @@ SELECT
     r.code,
     r.description,
     CASE
-        WHEN r.is_deleted THEN 'deleted'
         WHEN NOT r.is_enabled THEN 'disabled'
         WHEN r.status = 'invalid' THEN 'invalid'
         ELSE 'active'
@@ -32,7 +31,7 @@ FROM alerting.t_rules r;
 -- @statement
 
 COMMENT ON VIEW alerting.v_rules IS
-'Каталог правил со статусом (active/disabled/invalid/deleted), расписанием,
+'Каталог правил со статусом (active/disabled/invalid), расписанием,
 шаблоном и числом отправок за последние 24 часа. Доступно роли alerting_admin.';
 
 -- @statement
