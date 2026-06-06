@@ -13,12 +13,14 @@
 StarRocks под `root` — в отдельном подключении DBeaver. Готовые запросы аналитика
 лежат в `alerting-service/examples.sql`.
 
-Контур целиком:
+Контур целиком (последняя строка — замыкание петли: реакция возвращается событием):
 ```
 seed-users -> trigger-events -> Kafka -> Routine Load -> user_events
    -> REFRESH mv_* -> adm_create_rule -> dry-run -> adm_trigger_rule
    -> frequency cap -> t_dispatch_history -> notifications.adm_create_task (per-user context)
    -> RabbitMQ -> email-sender -> Mailpit
+   -> клик по ссылке в письме -> GET /ugc/email/click -> recommendation-событие -> Kafka -> user_events
+   -> dispatch_log + mv_rule_conversion -> воронка «отправили -> перешли по ссылке» в Superset
 ```
 
 ---
@@ -348,45 +350,123 @@ SELECT count(*) FROM alerting.t_dispatch_history;                          -- с
 
 ## 10. BI поверх витрин — Superset (браузер, http://localhost:8088)
 
-Здесь важно: `SELECT ... FROM mv_*` в **SQL Lab** даёт только табличную выдачу
-(сетку строк) — это ещё не чарт. Чтобы получить график, из результата SQL Lab
-создаётся **Chart**. Ниже — как именно.
+Superset читает **те же materialized views** StarRocks под ролью `alert_reader` —
+единый аналитический слой и для правил, и для дашбордов. `SELECT ... FROM mv_*` в
+**SQL Lab** даёт только таблицу (сетку строк); чтобы получить график, из её
+результата делается **Chart**.
 
-🎬 **Шаг 1. SQL Lab -> запрос.** Войти `admin`/`admin` -> меню **SQL** -> **SQL Lab**.
-Database: `starrocks_analytics`, schema: `ugc_analytics`. Выполнить:
+🎬 **Живой чарт активности.** Войти `admin`/`admin` -> меню **SQL** -> **SQL Lab**.
+Database `starrocks_analytics`, schema `ugc_analytics`. Выполнить:
 ```sql
-SELECT bucket_hour,
-       sum(views)          AS total_views,
-       sum(unique_viewers) AS total_unique_viewers
+SELECT bucket_hour, sum(views) AS views
 FROM ugc_analytics.mv_film_watch_hourly
-WHERE bucket_hour > now() - INTERVAL 7 DAY
+WHERE bucket_hour > now() - INTERVAL 30 DAY     -- 30 дней: win-back-события 8..30 дней назад
 GROUP BY bucket_hour
 ORDER BY bucket_hour;
 ```
-Появится таблица результата (часовые агрегаты).
+Появится таблица -> кнопка **CREATE CHART** -> экран **Explore**: тип `Line Chart`,
+X-axis `bucket_hour`, Metric `views` -> **CREATE CHART** -> **SAVE**. Линия повторяет
+сгенерированный паттерн (всплеск 30..8 дней назад, провал в последнюю неделю) —
+видно, что чарт показывает реальные засеянные события.
 
-🎬 **Шаг 2. Из результата -> график.** Нажать кнопку **CREATE CHART** (над/под
-результатом SQL Lab). Откроется экран **Explore**:
-- **Chart type:** `Line Chart` (или `Bar Chart`);
-- **X-axis / TIME:** `bucket_hour`;
-- **Metrics:** `total_views` (и `total_unique_viewers`);
-- нажать **CREATE CHART / RUN** — построится линия активности по часам.
-- **SAVE** -> дать имя, при желании добавить на Dashboard.
+> Окно именно 30 дней: win-back-события лежат 8..30 дней назад, в окне «7 дней» чарт
+> был бы пустым.
 
-🎬 **Ещё два чарта** (готовые SQL — `superset/README.md`): тренд по сегментам
-(`mv_segment_film_activity`, Bar) и выходные vs будни (`dim_date`, Pie). Тем же
-способом: SQL Lab -> CREATE CHART -> выбрать тип визуализации.
+> Альтернатива SQL Lab: **Data -> Datasets -> + Dataset**, выбрать `ugc_analytics.mv_*`
+> датасетом, затем **Charts -> + Chart** поверх него — без ручного SQL.
 
-> Альтернатива SQL Lab: **Data -> Datasets -> + Dataset**, выбрать
-> `ugc_analytics.mv_*` как датасет, затем **Charts -> + Chart** поверх него — так
-> чарт переиспользует витрину напрямую, без ручного SQL.
-
-🎬 Что показать на видео: что Superset читает **те же materialized views** StarRocks
-под ролью `alert_reader` — единый аналитический слой и для правил, и для BI.
+Главный чарт — воронка «отправили -> перешли по ссылке» — в следующем разделе.
+Его и показываем «меняющимся вживую». Ещё готовые SQL (сегменты, выходные/будни) —
+`superset/README.md`.
 
 ---
 
-## 11. (Опционально) другие сценарии и замыкание петли
+## 11. Замыкание петли — переход по ссылке из письма
+
+Главная идея диплома: контур замыкается. В каждом письме win-back есть ссылка
+«Открыть подборку». Пользователь кликает её прямо в почте — браузер дёргает
+эндпоинт `GET /ugc/email/click` в activity-tracker, тот публикует событие
+`recommendation` (`action=clicked`) в Kafka, и оно Routine Load'ом возвращается в
+`user_events`. Так настоящий клик из письма виден в Superset — без синтетики.
+
+Ссылка персональная — `http://localhost/ugc/email/click?rule=<код>&user=<uuid>&run=<id>`
+(шаблон подставляет `{{ params.rule_code }}`, `{{ user.id }}`, `{{ params.run_id }}`).
+Переход идемпотентен: `request_id` события = `uuid5(rule, run, user)`, поэтому повтор
+клика по той же ссылке дубля не создаёт, а новый запуск правила (новый `run`) даёт
+новую ссылку — отдельный переход (старые письма не задваиваются с новыми).
+
+**Воронка:** отправлено (`dispatch_log`) -> перешли по ссылке (реакции).
+«Отправлено» живёт в Postgres (`t_dispatch_history`), а Superset/правила ходят
+только в StarRocks — поэтому журнал отправок копируется в StarRocks тем же
+JDBC-механизмом, что и `dim_*` (таблица `dispatch_log`), а витрина
+`mv_rule_conversion` джойнит его с реакциями.
+
+🎬 **Шаг 1. Пустая воронка (письма ушли, переходов ещё нет).** Перенести журнал
+отправок в StarRocks и посчитать витрину (подключение `starrocks-root`):
+```sql
+USE ugc_analytics;
+INSERT OVERWRITE dispatch_log
+SELECT r.code, CAST(d.user_id AS VARCHAR(36)), d.sent_at, d.channel
+FROM pg_catalog.alerting.t_dispatch_history d
+JOIN pg_catalog.alerting.t_rules r ON r.id = d.rule_id;
+REFRESH MATERIALIZED VIEW mv_rule_conversion WITH SYNC MODE;
+```
+В Superset SQL Lab построить **Funnel Chart** (Database `starrocks_analytics`):
+```sql
+SELECT 'отправлено' AS stage, sent_users AS users
+FROM ugc_analytics.mv_rule_conversion WHERE rule_code='winback_active_user'
+UNION ALL
+SELECT 'перешли по ссылке', clicked_users
+FROM ugc_analytics.mv_rule_conversion WHERE rule_code='winback_active_user';
+```
+**CREATE CHART** -> тип `Funnel Chart`, Dimension `stage`, Metric `SUM(users)` ->
+**SAVE**. Сейчас «перешли по ссылке» = 0 — письма ушли (`sent` = число из §6), но
+никто ещё не кликнул.
+
+🎬 **Шаг 2. Кликаем ссылки в письмах.** Открыть Mailpit (http://localhost:8025),
+открыть выборочно несколько писем (например 5) и в каждом нажать ссылку «Открыть
+подборку». Браузер покажет страницу «Спасибо! Уже подбираем для вас фильмы». Каждый
+клик = реальный GET в activity-tracker -> событие `recommendation` в Kafka.
+
+> Если в Mailpit ссылка не кликается — скопировать её в адресную строку браузера.
+
+🎬 **Показать в Kafka UI** (http://localhost:8080): топик `recommendations`
+наполнился ровно на число кликов — переходы реально прошли через шину.
+
+🔍 **Проверка (для себя)** — переходы долетели в StarRocks (`starrocks-reader`):
+```sql
+SELECT count(DISTINCT user_id) FROM ugc_analytics.user_events
+WHERE event_type='recommendation' AND action='clicked';   -- = сколько кликнули
+```
+
+🎬 **Шаг 3. Воронка наполняется.** Пересчитать витрину (`starrocks-root`):
+```sql
+USE ugc_analytics;
+REFRESH MATERIALIZED VIEW mv_rule_conversion WITH SYNC MODE;
+```
+(`dispatch_log` не трогаем — отправки не менялись.) Нажать **RUN** на том же
+Funnel-чарте: «перешли по ссылке» = 5 (или сколько кликнули). Видно **на глазах**:
+из 17 отправленных столько-то реально перешли по ссылке из письма.
+
+🎬 **Что это значит (сказать на видео).** Раньше после письма наступала тишина;
+теперь виден реальный отклик — сколько людей кликнули ссылку из письма. Это
+закрывает контур «данные -> письмо -> снова данные», и правила можно сравнивать
+между собой по доле перешедших.
+
+**Как это устроено (показать места в коде):**
+- ссылка в шаблоне письма — `alerting-service/sql/seed/001_alerting_templates.sql`;
+- приёмник кликов — `activity-tracker-service/src/api/v1/track.py`
+  (`GET /ugc/email/click`). Публичный (получатель письма не авторизован) и лежит
+  вне `/ugc/api/v1`, поэтому без JWT. В проде ссылку надо подписывать (HMAC), чтобы
+  переход нельзя было подделать;
+- `rule_code` и `run_id` в письмо кладёт движок (`executor._create_notification_task`,
+  `params`), `user.id` подставляет рендер notifications;
+- идемпотентность: `request_id` события = `uuid5(rule, run, user)` (`track.py`) — на
+  PK `user_events` повтор клика схлопывается, а новый `run` = отдельный переход.
+
+---
+
+## 12. (Опционально) другие сценарии-витрины
 
 Тот же конвейер, другие витрины/правила (полные SQL — `examples.sql`,
 бизнес-истории — `diploma_tz.md` §10):
@@ -400,11 +480,6 @@ docker compose --profile demo run --rm movies-demo-tools \
 ```
 После каждого — refresh соответствующих MV (см. §3) и регистрация правила.
 
-**Замыкание петли (ROI правила):** реакция пользователя на письмо
-(`POST /ugc/api/v1/events/recommendation`) возвращается событием в `user_events`,
-и в Superset считается конверсия правила
-(`WHERE event_type='recommendation' AND rule_code=...`).
-
 ---
 
 ## Сброс перед повторным показом
@@ -413,5 +488,7 @@ docker compose --profile demo run --rm movies-demo-tools \
 -- подключение movies-pg
 SELECT alerting.adm_delete_rule('winback_active_user');   -- мягкое удаление
 ```
-Mailpit чистится кнопкой «Delete all». `seed-users`/`trigger-events` идемпотентны —
-§2–§9 можно прогнать заново. Полный сброс — `docker compose down -v && up --build`.
+Mailpit чистится кнопкой «Delete all». `seed-users`/`trigger-events` идемпотентны,
+а повторный клик по ссылке из письма не создаёт дубля (детерминированный
+`request_id`) — §2–§11 можно прогнать заново. Таблицы `dispatch_log`/
+`mv_rule_conversion` пересоздаются при `docker compose down -v && up --build`.

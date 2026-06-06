@@ -98,3 +98,24 @@ SELECT * FROM alerting.v_dispatch ORDER BY sent_at DESC LIMIT 50;
 -- REFRESH MATERIALIZED VIEW mv_segment_film_activity WITH SYNC MODE;
 -- REFRESH MATERIALIZED VIEW mv_film_watch_hourly    WITH SYNC MODE;
 -- REFRESH MATERIALIZED VIEW mv_weekend_film_activity WITH SYNC MODE;
+
+-- ============================================================
+-- 8. Замыкание петли: сколько людей откликнулось на письма правила.
+--    Выполнять под root через MySQL-протокол StarRocks (как §7).
+--    «Отправлено» (dispatch_log) тянется из Postgres t_dispatch_history по JDBC;
+--    «перешли по ссылке» — события event_type=recommendation (action=clicked) в
+--    user_events: их кладёт GET /ugc/email/click при клике по ссылке в письме
+--    (повторный клик по той же ссылке дубля не создаёт — детерминированный request_id).
+-- ============================================================
+-- USE ugc_analytics;
+-- -- Обновить копию журнала отправок и пересчитать витрину:
+-- INSERT OVERWRITE dispatch_log
+-- SELECT r.code, CAST(d.user_id AS VARCHAR(36)), d.sent_at, d.channel
+-- FROM pg_catalog.alerting.t_dispatch_history d
+-- JOIN pg_catalog.alerting.t_rules r ON r.id = d.rule_id;
+-- REFRESH MATERIALIZED VIEW mv_rule_conversion WITH SYNC MODE;
+-- -- Воронка по правилу:
+-- SELECT rule_code, sent_users, clicked_users,
+--        round(100.0*clicked_users/sent_users, 1) AS click_pct
+-- FROM mv_rule_conversion
+-- WHERE rule_code = 'winback_active_user';

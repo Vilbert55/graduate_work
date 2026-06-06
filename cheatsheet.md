@@ -27,13 +27,13 @@
 | **films-etl-service** | ETL `Postgres content -> Elasticsearch` | — (не диплом) |
 | **films-search-service (FastAPI)** | Поиск фильмов поверх **Elasticsearch** | — |
 | **auth-service (FastAPI)** | Пользователи, JWT, RBAC. Добавлены поля `gender/age/country/is_demo` | Источник для `dim_users` (сегментация) |
-| **activity-tracker (Flask, UGC)** | Приём событий (`view/click/custom/recommendation`) -> Kafka | Старт контура: события -> StarRocks |
+| **activity-tracker (Flask, UGC)** | Приём событий (`view/click/custom/recommendation`) -> Kafka. Публичный `GET /ugc/email/click` (`track.py`) ловит клик по ссылке из письма | Старт контура (события) **и** замыкание (клик из письма -> recommendation) |
 | **Kafka** | Буфер событий (топики `views/clicks/custom_events/recommendations`) | StarRocks читает их Routine Load |
 | **StarRocks** | Аналитическое хранилище: `user_events`, `dim_*`, `mv_*` | **Ядро аналитики диплома** |
 | **notifications-service** | Доставка: Scheduler -> Outbox -> RabbitMQ -> email/ws sender -> Mailpit | Конец контура: alerting зовёт `adm_create_task` |
 | **alerting-service (APScheduler)** | **Движок SQL-правил** (диплом) | Главный артефакт |
 | **Superset** | BI поверх `mv_*` StarRocks | Диплом (ФТ-11) |
-| **demo-tools (CLI)** | `seed-users` / `trigger-events` для демо | Подготовка демо-данных |
+| **demo-tools (CLI)** | `seed-users` / `trigger-events` для демо | Подготовка демо-данных (юзеры + события) |
 | **Elasticsearch** | (1) поисковый индекс фильмов; (2) хранилище логов ELK | Диплома **не касается** напрямую |
 
 **Про Elasticsearch отдельно** (чтобы не путаться): в платформе ES играет две
@@ -60,12 +60,19 @@ seed-users -> trigger-events -> Kafka -> Routine Load -> user_events (StarRocks)
    -> alerting-engine: SQL в StarRocks под alert_reader   (выборка аудитории)
    -> frequency cap -> t_dispatch_history  (лимиты + история, одна транзакция)
    -> notifications.adm_create_task (per-user context)    (задача на рассылку)
-   -> RabbitMQ -> email-sender -> Mailpit  (письма)
-   -> [пользователь кликает -> recommendation-событие -> обратно в user_events]
+   -> RabbitMQ -> email-sender -> Mailpit  (письма со ссылкой «Открыть подборку»)
+   -> клик по ссылке -> GET /ugc/email/click (activity-tracker) -> recommendation-событие -> Kafka -> user_events
+   -> dispatch_log + mv_rule_conversion -> воронка «отправили -> перешли по ссылке» в Superset
 ```
 
-Последняя строка — замыкание петли: реакция на письмо возвращается событием
-`recommendation`, и аналитик в Superset считает конверсию правила.
+Последние строки — замыкание петли: в письме персональная ссылка
+`http://localhost/ugc/email/click?rule=<код>&user=<uuid>&run=<id>`; клик дёргает
+публичный эндпоинт `activity-tracker-service/src/api/v1/track.py`, тот шлёт событие
+`recommendation` (`action=clicked`) в Kafka -> оно возвращается в `user_events`.
+Журнал отправок копируется в StarRocks (`dispatch_log`), и `mv_rule_conversion`
+показывает, сколько людей реально перешли по ссылке. Идемпотентность: `request_id`
+= `uuid5(rule, run, user)` — повтор клика по той же ссылке дубля не создаёт, а новое
+срабатывание правила (новый `run`) даёт новую ссылку (отдельный переход).
 
 ---
 
@@ -170,9 +177,16 @@ _enqueue_rule_run(rule_id, kind):
   Postgres через **JDBC Catalog** `pg_catalog` (внешний каталог: StarRocks читает
   Postgres как свои таблицы) командой `INSERT OVERWRITE`. Регулярность — нативный
   `SUBMIT TASK ... SCHEDULE EVERY 1 HOUR` внутри StarRocks (отдельного Python-ETL нет).
-- **`mv_*`** — 5 materialized views (`mv_user_activity`, `mv_user_top_genres`,
-  `mv_segment_film_activity`, `mv_film_watch_hourly`, `mv_weekend_film_activity`),
-  `REFRESH ASYNC` — StarRocks сам пересчитывает их при изменении источников.
+- **`dispatch_log`** — DUPLICATE KEY-таблица, копия `alerting.t_dispatch_history`
+  (журнал отправок) тем же JDBC-механизмом, что и `dim_*` (джойн с `t_rules` ради
+  `rule_code`). Нужна, чтобы посчитать отклик: «сколько отправили» живёт в Postgres,
+  а Superset/правила ходят только в StarRocks. `SUBMIT TASK sync_dispatch_log`.
+- **`mv_*`** — 6 materialized views (`mv_user_activity`, `mv_user_top_genres`,
+  `mv_segment_film_activity`, `mv_film_watch_hourly`, `mv_weekend_film_activity`,
+  `mv_rule_conversion`), `REFRESH ASYNC` — StarRocks сам пересчитывает их при
+  изменении источников. `mv_rule_conversion` = воронка (dispatch_log LEFT JOIN
+  переходы `event_type=recommendation, action=clicked`): отправили -> перешли по
+  ссылке, по каждому правилу.
 - **`alert_reader`** — роль/пользователь только на `SELECT` (на таблицы **и** MV).
   Под ней ходит движок. Это защита: правило аналитика физически не может ничего
   изменить в StarRocks.
@@ -290,7 +304,8 @@ JSONB правила, `per_user_per_day` из настройки. `is_empty` -> 
 | ФТ-6/7 ручной запуск, журнал | `adm_trigger_rule`, `t_runs` / `v_runs` |
 | ФТ-8 история доставки + партиции/retention | `t_dispatch_history` + `maint_dispatch_partitions` |
 | ФТ-10 синхронизация dim_* средствами StarRocks | `starrocks_dims_init` JDBC Catalog + `SUBMIT TASK` |
-| ФТ-11 BI-дашборды | Superset поверх `mv_*` |
+| ФТ-11 BI-дашборды | Superset поверх `mv_*`; главный чарт — воронка «отправили -> перешли по ссылке» (`mv_rule_conversion`) |
+| Замыкание петли | ссылка в письме (`001_alerting_templates.sql`) -> клик -> `GET /ugc/email/click` (`track.py`, идемпотентно по uuid5 rule+user) -> recommendation -> `dispatch_log` + `mv_rule_conversion` |
 | ФТ-12 notifications не ломаем | только `adm_create_task`/`adm_upsert_template` + опциональный `params_by_user` |
 | НФТ-3 надёжность/recovery | атомарная фаза 3 + `_recover_interrupted_runs` + идемпотентный ключ |
 | НФТ-6 юнит-тесты | `tests/test_executor_logic.py` (контракт колонок, context, cap) |

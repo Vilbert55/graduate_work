@@ -15,7 +15,8 @@ SELECT notifications.adm_upsert_template(
 Вы давно не смотрели фильмы у нас. Возможно, вам понравится что-то новое из ваших любимых жанров:
 {% if params.top_genres is defined and params.top_genres %}{{ params.top_genres | join(', ') }}{% else %}подборка специально для вас{% endif %}.
 
-Перейдите в каталог и выберите что-нибудь по душе.
+Откройте подборку — и мы покажем фильмы по вашим жанрам:
+  http://localhost/ugc/email/click?rule={{ params.rule_code }}&user={{ user.id }}&run={{ params.run_id }}
 
 — Команда Movies
 $body$,

@@ -10,6 +10,7 @@ from sentry_sdk.integrations.flask import FlaskIntegration
 from src.apache_kafka.producer import get_producer
 from src.api.v1.events import auth_function
 from src.api.v1.events import bp as events_bp
+from src.api.v1.track import bp as track_bp
 from src.core.config import settings
 
 
@@ -75,6 +76,7 @@ def create_app() -> APIFlask:  # noqa: C901
             auth_function()
 
     app.register_blueprint(events_bp)
+    app.register_blueprint(track_bp)
 
     # --- Sentry debug ---
     @app.get('/ugc/sentry-debug')

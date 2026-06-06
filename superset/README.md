@@ -13,11 +13,32 @@ Apache Superset 6.1.0 — BI поверх Materialized views `ugc_analytics` в 
 
 ## Готовые SQL для SQL Lab → Charts
 
-Полностью автоматическое разворачивание дашбордов из YAML/zip — задача недели 3.
-В неделе 2 готов 1 минимальный пример; ещё два будут построены руками во
-время демо. Все три запроса ниже работают сразу, после первого refresh MV.
+Запросы ниже работают сразу после первого refresh MV. Строятся руками во время
+демо (SQL Lab → CREATE CHART → выбрать тип визуализации). Подробная хореография —
+в `demo.md` §10–§11.
 
-### Чарт 1 — почасовая активность по фильмам (Big Number / Line)
+### Чарт 0 (главный) — воронка «отправили → перешли по ссылке» (Funnel)
+
+Замыкание петли: видно, сколько людей перешли по ссылке из письма. «Отправлено»
+берётся из `dispatch_log` (копия `alerting.t_dispatch_history`, тянется в StarRocks
+по JDBC), переходы — из `user_events` (`event_type=recommendation`, `action=clicked`,
+их кладёт `GET /ugc/email/click` при клике по ссылке в письме). Витрина —
+`mv_rule_conversion`. Чарт меняется вживую: до кликов «перешли по ссылке» = 0,
+после кликов в Mailpit — растёт.
+
+```sql
+SELECT 'отправлено' AS stage, sent_users AS users
+FROM ugc_analytics.mv_rule_conversion WHERE rule_code='winback_active_user'
+UNION ALL
+SELECT 'перешли по ссылке', clicked_users
+FROM ugc_analytics.mv_rule_conversion WHERE rule_code='winback_active_user';
+```
+
+Тип `Funnel Chart`, Dimension `stage`, Metric `SUM(users)`.
+
+### Чарт 1 — почасовая активность по фильмам (Line)
+
+Окно 30 дней: win-back-события засеяны 8..30 дней назад, в окне «7 дней» чарт пуст.
 
 ```sql
 SELECT
@@ -25,7 +46,7 @@ SELECT
     sum(views)          AS total_views,
     sum(unique_viewers) AS total_unique_viewers
 FROM ugc_analytics.mv_film_watch_hourly
-WHERE bucket_hour > now() - INTERVAL 7 DAY
+WHERE bucket_hour > now() - INTERVAL 30 DAY
 GROUP BY bucket_hour
 ORDER BY bucket_hour;
 ```

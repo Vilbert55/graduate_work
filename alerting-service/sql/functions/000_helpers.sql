@@ -45,7 +45,9 @@ LANGUAGE plpgsql
 SET search_path = pg_catalog, alerting
 AS $$
 DECLARE
-    v_sql TEXT := btrim(p_sql);
+    -- btrim с одним аргументом снимает только пробелы; многострочный SQL
+    -- (блок $sql$ ... $sql$) начинается с переноса строки — снимаем и его.
+    v_sql TEXT := btrim(p_sql, E' \t\n\r');
 BEGIN
     IF p_sql IS NULL THEN
         RETURN;

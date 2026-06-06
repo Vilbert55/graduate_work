@@ -108,6 +108,23 @@ PROPERTIES (
     "enable_persistent_index" = "true"
 );
 
+-- dispatch_log — журнал отправленных писем, скопированный из Postgres
+-- (alerting.t_dispatch_history). Источник истины — Postgres; сюда тянем копию
+-- тем же JDBC-механизмом, что и dim_*, потому что Superset/правила читают ТОЛЬКО
+-- StarRocks (под alert_reader) и до Postgres не дотягиваются. Без этой копии
+-- не посчитать отклик на письма: «сколько отправили» живёт в Postgres,
+-- «сколько отреагировали» — в user_events (StarRocks). DUPLICATE KEY: это лог
+-- (один юзер мог получить письмо много раз), дедупликация не нужна.
+CREATE TABLE IF NOT EXISTS dispatch_log (
+    rule_code  VARCHAR(64)  NOT NULL COMMENT 'код правила (alerting.t_rules.code)',
+    user_id    VARCHAR(36)  NOT NULL COMMENT 'кому отправлено письмо',
+    sent_at    DATETIME     NOT NULL COMMENT 'когда отправлено',
+    channel    VARCHAR(16)  NULL
+)
+DUPLICATE KEY (rule_code, user_id)
+DISTRIBUTED BY HASH(user_id) BUCKETS 4
+PROPERTIES ("replication_num" = "1");
+
 -- ============================================================
 -- 3. Первичная заливка (синхронно, чтобы MV сразу было что считать)
 -- ============================================================
@@ -174,6 +191,17 @@ SELECT
     d.is_weekend,
     coalesce(d.is_holiday, FALSE) AS is_holiday
 FROM pg_catalog.content.date_dimension d;
+
+-- Журнал отправок из Postgres. На свежем стенде t_dispatch_history пуст —
+-- получится пустая таблица; наполнится после первого боевого запуска правила.
+INSERT OVERWRITE dispatch_log
+SELECT
+    r.code AS rule_code,
+    CAST(d.user_id AS VARCHAR(36)) AS user_id,
+    d.sent_at,
+    d.channel
+FROM pg_catalog.alerting.t_dispatch_history d
+JOIN pg_catalog.alerting.t_rules r ON r.id = d.rule_id;
 
 -- ============================================================
 -- 4. Регулярная синхронизация — нативный SUBMIT TASK
@@ -246,6 +274,18 @@ SELECT
     d.year, d.quarter, d.month, d.day, d.day_of_week, d.week_of_year,
     d.is_weekend, coalesce(d.is_holiday, FALSE)
 FROM pg_catalog.content.date_dimension d;
+
+-- Журнал отправок: тянем из Postgres ежечасно (как и dim_*).
+DROP TASK IF EXISTS sync_dispatch_log;
+SUBMIT TASK sync_dispatch_log SCHEDULE EVERY (INTERVAL 1 HOUR)
+AS INSERT OVERWRITE dispatch_log
+SELECT
+    r.code AS rule_code,
+    CAST(d.user_id AS VARCHAR(36)) AS user_id,
+    d.sent_at,
+    d.channel
+FROM pg_catalog.alerting.t_dispatch_history d
+JOIN pg_catalog.alerting.t_rules r ON r.id = d.rule_id;
 
 -- ============================================================
 -- 5. Materialized views (async refresh — пересчитываются автоматически
@@ -354,6 +394,29 @@ WHERE e.event_type = 'view'
   AND d.is_weekend = TRUE
   AND e.client_time > date_sub(now(), INTERVAL 60 DAY)
 GROUP BY date(e.client_time), e.film_id;
+
+-- 5.6 mv_rule_conversion — ЗАМЫКАНИЕ ПЕТЛИ: переходы по ссылке из писем.
+--     Воронка на каждое правило: сколько писем отправлено (dispatch_log) ->
+--     сколько человек перешло по ссылке (события event_type=recommendation,
+--     action=clicked — их кладёт GET /ugc/email/click при клике по ссылке в
+--     письме). Видно, сработало ли правило: было «данные -> письмо», стало
+--     «письмо -> снова данные». LEFT JOIN: правило с отправками без переходов
+--     тоже остаётся в витрине (clicked_users = 0).
+CREATE MATERIALIZED VIEW IF NOT EXISTS mv_rule_conversion
+DISTRIBUTED BY HASH(rule_code) BUCKETS 4
+REFRESH ASYNC
+PROPERTIES ("replication_num" = "1")
+AS
+SELECT
+    d.rule_code,
+    count(DISTINCT d.user_id) AS sent_users,
+    count(DISTINCT CASE WHEN r.action = 'clicked' THEN r.user_id END) AS clicked_users
+FROM ugc_analytics.dispatch_log d
+LEFT JOIN ugc_analytics.user_events r
+    ON r.event_type = 'recommendation'
+   AND r.rule_code = d.rule_code
+   AND r.user_id = d.user_id
+GROUP BY d.rule_code;
 
 -- ============================================================
 -- 6. Роль alert_reader — её использует alerting-engine

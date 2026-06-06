@@ -378,6 +378,11 @@ async def _create_notification_task(
     мерджит его поверх общих params при рендере шаблона, поэтому у каждого письма
     свои подстановки. Идемпотентность: ключ alerting:{rule_id}:{run_id} — повтор
     того же запуска вернёт ту же задачу, второго письма не будет.
+
+    rule_code и run_id уходят в params: шаблон строит из них ссылку
+    /ugc/email/click. run_id делает ссылку уникальной для каждого срабатывания
+    правила (новый запуск -> новая ссылка -> отдельный переход), а recovery с тем
+    же run_id даёт ту же ссылку (без задвоения).
     """
     user_ids = [uid for uid, _ in kept]
     params_by_user = {uid: ctx for uid, ctx in kept if ctx}
@@ -402,7 +407,7 @@ async def _create_notification_task(
             "ch": rule["channel"],
             "aud": json.dumps(audience),
             "name": f"alerting:{rule['code']}",
-            "params": json.dumps({"rule_code": rule["code"]}),
+            "params": json.dumps({"rule_code": rule["code"], "run_id": str(run_id)}),
             "ikey": f"alerting:{rule_id}:{run_id}",
         },
     )
