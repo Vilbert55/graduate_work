@@ -37,7 +37,8 @@ $$;
 -- Поставить правило в очередь на исполнение движком: создать t_runs со
 -- статусом 'running' и послать NOTIFY 'alerting_trigger' с пейлоадом
 -- '<p_kind>:<rule_id>:<run_id>'. p_kind — 'trigger' (рассылка) или 'dryrun'
--- (тестовый прогон без рассылки). Возвращает run_id.
+-- (тестовый прогон без рассылки). is_dry_run помечает запуск, чтобы recovery
+-- не «дослал» прерванный тестовый прогон реальными письмами. Возвращает run_id.
 CREATE OR REPLACE FUNCTION alerting._enqueue_rule_run(p_rule_id UUID, p_kind TEXT)
 RETURNS UUID
 LANGUAGE plpgsql
@@ -51,8 +52,8 @@ BEGIN
         RAISE EXCEPTION 'rule_not_found: %', p_rule_id;
     END IF;
 
-    INSERT INTO alerting.t_runs(rule_id, status)
-    VALUES (p_rule_id, 'running')
+    INSERT INTO alerting.t_runs(rule_id, status, is_dry_run)
+    VALUES (p_rule_id, 'running', p_kind = 'dryrun')
     RETURNING id INTO v_run_id;
 
     PERFORM pg_notify('alerting_trigger',

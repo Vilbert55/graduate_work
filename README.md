@@ -24,7 +24,7 @@ https://github.com/Vilbert55/notifications_sprint_1
 - **Kibana** - визуализация логов из индекса `movies-logs-*`
 - **Filebeat** - агент сбора логов Docker-контейнеров, отправляет в Logstash
 - **Glitchtip(Sentry)** - мониторинг ошибок (films-search-service, auth-service, community-content-service, activity-tracker-service)
-- **Alerting Engine (FastAPI/APScheduler)** _(дипломный)_ — движок SQL-правил поверх StarRocks; по расписанию каждого правила формирует задачи в notifications-service. Управление через SQL-функции `alerting.adm_*` в DBeaver (нет HTTP-API).
+- **Alerting Engine (APScheduler)** _(дипломный)_ — движок SQL-правил поверх StarRocks; по расписанию каждого правила формирует задачи в notifications-service. Управление через SQL-функции `alerting.adm_*` в DBeaver (нет HTTP-API).
 - **StarRocks dims + Materialized Views** _(дипломный)_ — `dim_films / dim_users / dim_genres / dim_date` (JDBC Catalog + `SUBMIT TASK SCHEDULE EVERY 1 HOUR`); 5 MV (`mv_user_activity / mv_user_top_genres / mv_segment_film_activity / mv_film_watch_hourly / mv_weekend_film_activity`).
 - **Apache Superset** _(дипломный)_ — BI поверх Materialized views StarRocks (datasource `starrocks_analytics`, роль `alert_reader`).
 - **Demo tools** _(дипломный, profile `demo`)_ — CLI `seed-users` / `trigger-events` для подготовки демо-сценариев.

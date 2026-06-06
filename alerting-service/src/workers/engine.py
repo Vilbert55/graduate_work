@@ -23,7 +23,7 @@ from contextlib import suppress
 import asyncpg
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from src.core.config import settings
 from src.db.postgres import async_session_maker
@@ -65,8 +65,10 @@ async def _sync_jobs(scheduler: AsyncIOScheduler) -> None:
         rules: list[Rule] = list(result.scalars().all())
 
     # 2. Сравниваем "как должно быть" (из БД) с "как сейчас" (в планировщике).
+    #    Учитываем только job-ы правил (id вида rule:*) — служебные job-ы вроде
+    #    обслуживания партиций (maint:*) синхронизация не трогает.
     active_ids: set[str] = {_job_id(r.id) for r in rules}
-    scheduled_ids: set[str] = {j.id for j in scheduler.get_jobs()}
+    scheduled_ids: set[str] = {j.id for j in scheduler.get_jobs() if j.id.startswith("rule:")}
 
     # 3. Снимаем jobs правил, которых больше нет в выборке (выключили/удалили).
     for job_id in scheduled_ids - active_ids:
@@ -152,7 +154,7 @@ async def _listen_for_triggers(stop_event: asyncio.Event) -> None:
             finally:
                 with suppress(Exception):
                     await conn.close()
-        except Exception:  # noqa: BLE001 — соединение упало, ждём 5с и переподключаемся
+        except Exception:  # соединение упало, ждём 5с и переподключаемся
             if stop_event.is_set():
                 return
             logger.exception("listener crashed — reconnect in 5s")
@@ -161,12 +163,68 @@ async def _listen_for_triggers(stop_event: asyncio.Event) -> None:
                 await asyncio.wait_for(stop_event.wait(), timeout=5)
 
 
+async def _maintain_partitions() -> None:
+    """Нарезать недельные партиции t_dispatch_history и подчистить старые (ФТ-8)."""
+    async with async_session_maker() as session:
+        await session.execute(
+            text("SELECT alerting.maint_dispatch_partitions(:days)"),
+            {"days": settings.dispatch_retention_days},
+        )
+        await session.commit()
+
+
+async def _recover_interrupted_runs() -> None:
+    """Дозавершить запуски, прерванные сбоем движка (НФТ-3).
+
+    Берём t_runs со статусом 'running' старше recovery_grace_sec (dry-run
+    исключаем — у него нет рассылки, которую можно «потерять») и повторяем
+    execute_rule с тем же run_id. Атомарность фазы dispatch гарантирует, что
+    повтор не создаст дублей: 'running' ⟺ ничего не закоммичено.
+    """
+    async with async_session_maker() as session:
+        rows = (await session.execute(
+            text(
+                "SELECT id, rule_id FROM alerting.t_runs "
+                "WHERE status = 'running' AND is_dry_run = FALSE "
+                "  AND started_at < (now() AT TIME ZONE 'utc') - make_interval(secs => :grace)"
+            ),
+            {"grace": settings.recovery_grace_sec},
+        )).all()
+
+    for run_id, rule_id in rows:
+        logger.info("recovering interrupted run", extra={"run_id": str(run_id), "rule_id": str(rule_id)})
+        try:
+            await execute_rule(rule_id, run_id=run_id)
+        except RuleNotFoundError:
+            # Правило успели удалить — закрываем осиротевший запуск как failed.
+            async with async_session_maker() as session:
+                await session.execute(
+                    text("UPDATE alerting.t_runs SET status='failed', error='rule_deleted', "
+                         "finished_at=(now() AT TIME ZONE 'utc') WHERE id = :rid"),
+                    {"rid": run_id},
+                )
+                await session.commit()
+
+
 async def run() -> None:
     """Точка входа: поднимает планировщик, слушатель и держит их до остановки."""
     # Планировщик гоняет правила по их cron (всё в UTC).
     scheduler = AsyncIOScheduler(timezone="UTC")
     scheduler.start()
     logger.info("alerting-engine started")
+
+    # Обслуживание партиций истории отправок: сразу + раз в сутки в 00:05 UTC.
+    await _maintain_partitions()
+    scheduler.add_job(
+        _maintain_partitions,
+        trigger=CronTrigger.from_crontab("5 0 * * *"),
+        id="maint:dispatch_partitions",
+        name="maint_dispatch_partitions",
+        replace_existing=True,
+    )
+
+    # Восстановление прерванных сбоем запусков (НФТ-3) — до планирования правил.
+    await _recover_interrupted_runs()
 
     # Первичная загрузка правил из БД в планировщик.
     await _sync_jobs(scheduler)
@@ -192,7 +250,7 @@ async def run() -> None:
         while not stop_event.is_set():
             try:
                 await asyncio.wait_for(stop_event.wait(), timeout=settings.rules_refresh_interval_sec)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 await _sync_jobs(scheduler)  # таймаут вышел — время пересинхронизироваться
     finally:
         # Корректное завершение: гасим планировщик и дожидаемся слушателя.

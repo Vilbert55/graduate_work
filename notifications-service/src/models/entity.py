@@ -1,10 +1,10 @@
 """SQLAlchemy модели схемы notifications.
 
 ВАЖНО: записи в эти таблицы выполняются ТОЛЬКО через SQL-функции
-(notifications.create_task, send_user_event, claim_messages_batch, ...).
-Здесь модели нужны для:
-  1) автогенерации DDL через alembic;
-  2) read-only выборок из воркеров (через v_* представления тоже можно).
+(notifications.adm_create_task, _send_user_event, _claim_messages_batch, ...).
+Имена таблиц/ограничений соответствуют миграции 0001_initial_tables (t_*).
+Модели декоративны (воркеры читают/пишут через raw SQL и v_*-представления) —
+нужны лишь для полноты Base.metadata.
 """
 import uuid
 from datetime import UTC, datetime
@@ -34,9 +34,9 @@ def _now_utc() -> datetime:
 
 
 class NotificationTemplate(Base):
-    __tablename__ = "notification_templates"
+    __tablename__ = "t_templates"
     __table_args__ = (
-        UniqueConstraint("code", name="uq_notification_templates_code"),
+        UniqueConstraint("code", name="uq_t_templates_code"),
         {"schema": SCHEMA},
     )
 
@@ -53,11 +53,11 @@ class NotificationTemplate(Base):
 
 
 class NotificationTask(Base):
-    __tablename__ = "notification_tasks"
+    __tablename__ = "t_tasks"
     __table_args__ = (
-        UniqueConstraint("idempotency_key", name="uq_notification_tasks_idempotency_key"),
-        UniqueConstraint("code", name="uq_notification_tasks_code"),
-        Index("ix_notification_tasks_next_run", "is_enabled", "next_run_at"),
+        UniqueConstraint("idempotency_key", name="uq_t_tasks_idempotency_key"),
+        UniqueConstraint("code", name="uq_t_tasks_code"),
+        Index("ix_t_tasks_next_run", "is_enabled", "next_run_at"),
         {"schema": SCHEMA},
     )
 
@@ -67,7 +67,7 @@ class NotificationTask(Base):
     name = Column(String(255), nullable=False)
     template_id = Column(
         UUID(as_uuid=True),
-        ForeignKey(f"{SCHEMA}.notification_templates.id"),
+        ForeignKey(f"{SCHEMA}.t_templates.id"),
         nullable=False,
     )
     channel = Column(String(16), nullable=False)         # email | ws
@@ -90,22 +90,22 @@ class NotificationTask(Base):
 
 
 class NotificationMessage(Base):
-    __tablename__ = "notification_messages"
+    __tablename__ = "t_messages"
     __table_args__ = (
         UniqueConstraint(
             "task_id", "user_id", "run_at",
-            name="uq_notification_messages_task_user_run",
+            name="uq_t_messages_task_user_run",
         ),
-        Index("ix_notification_messages_status_attempt", "status", "next_attempt_at"),
-        Index("ix_notification_messages_user", "user_id"),
-        Index("ix_notification_messages_task", "task_id"),
+        Index("ix_t_messages_status_attempt", "status", "next_attempt_at"),
+        Index("ix_t_messages_user", "user_id"),
+        Index("ix_t_messages_task", "task_id"),
         {"schema": SCHEMA},
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     task_id = Column(
         UUID(as_uuid=True),
-        ForeignKey(f"{SCHEMA}.notification_tasks.id"),
+        ForeignKey(f"{SCHEMA}.t_tasks.id"),
         nullable=False,
     )
     run_at = Column(DateTime, nullable=False)              # конкретная итерация рассылки
@@ -130,7 +130,7 @@ class NotificationMessage(Base):
 class WorkerLeaseLog(Base):
     """Сервисная таблица: лог кто что выгрузил в RabbitMQ. Полезна для отладки/наблюдения."""
 
-    __tablename__ = "worker_lease_log"
+    __tablename__ = "t_worker_lease_log"
     __table_args__ = ({"schema": SCHEMA},)
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)

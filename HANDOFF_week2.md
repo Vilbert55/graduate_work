@@ -180,14 +180,19 @@ SELECT alerting.adm_create_rule(
 SELECT alerting.adm_enable_rule('winback_demo');
 SQL
 
-# 7) Принудительно обновить MV (без часовой паузы)
-docker exec movies-starrocks mysql -h127.0.0.1 -P9030 -uroot -e "
-  USE ugc_analytics;
-  EXECUTE TASK sync_dim_users;
-  EXECUTE TASK sync_dim_films;
-  EXECUTE TASK sync_dim_genres;
-  EXECUTE TASK sync_dim_date;
-  REFRESH MATERIALIZED VIEW mv_user_activity;
+# 7) Принудительно обновить измерения и MV (без часовой паузы).
+#    NB: StarRocks 4.0.8 НЕ поддерживает `EXECUTE TASK <name>` — повторяем тот же
+#    INSERT OVERWRITE, что и в SUBMIT TASK, + REFRESH ... WITH SYNC MODE.
+#    Полный блок — demo.md §3 и alerting-service/examples.sql §7.
+docker exec movies-starrocks mysql -h127.0.0.1 -P9030 -uroot ugc_analytics -e "
+  INSERT OVERWRITE dim_users SELECT CAST(u.id AS VARCHAR(36)), u.gender, u.age, u.country,
+    concat_ws('_', coalesce(u.gender,'X'),
+      CASE WHEN u.age IS NULL THEN 'X' WHEN u.age<18 THEN '0-17' WHEN u.age<=24 THEN '18-24'
+           WHEN u.age<=34 THEN '25-34' WHEN u.age<=44 THEN '35-44' WHEN u.age<=54 THEN '45-54'
+           ELSE '55+' END, coalesce(u.country,'X')), u.created_at, u.is_demo
+    FROM pg_catalog.auth.users u;
+  REFRESH MATERIALIZED VIEW mv_user_activity   WITH SYNC MODE;
+  REFRESH MATERIALIZED VIEW mv_user_top_genres WITH SYNC MODE;
 "
 
 # 8) Подождать пару минут — engine сработает по cron */2

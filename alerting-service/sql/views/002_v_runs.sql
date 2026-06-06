@@ -12,7 +12,8 @@ SELECT
     ru.dispatched_users,
     ru.notification_task_id,
     ru.status,
-    ru.error
+    ru.error,
+    ru.is_dry_run
 FROM alerting.t_runs ru
 JOIN alerting.t_rules r ON r.id = ru.rule_id;
 

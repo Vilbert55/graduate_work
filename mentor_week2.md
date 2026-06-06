@@ -93,8 +93,8 @@ seed-users -> trigger-events -> Kafka -> Routine Load -> user_events (StarRocks)
 
 ## 6. Чем демонстрировать
 
-Пошаговый сценарий с командами/запросами — отдельный файл **`demo_week2.md`**
-(терминал -> DBeaver -> Mailpit -> Superset, опционально Postman для замыкания контура).
+Пошаговый сценарий с командами/запросами — файл **`demo.md`** (полная демонстрация
+недель 2–3: терминал -> DBeaver -> Mailpit -> Superset, опционально Postman для замыкания контура).
 Готовые SQL-вызовы — `alerting-service/examples.sql`.
 
 ---

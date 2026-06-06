@@ -137,13 +137,21 @@ async def _bulk_insert_messages(
     users: list[UserData],
     run_at: datetime,
 ) -> int:
-    """Вернёт фактически вставленных строк (после ON CONFLICT)."""
+    """Вернёт фактически вставленных строк (после ON CONFLICT).
+
+    Per-user контекст из audience.params_by_user (его кладёт alerting-engine,
+    ФТ-2) мерджится поверх task.params при рендере шаблона. Для обычных задач
+    ключа нет — поведение не меняется.
+    """
     if not users:
         return 0
 
+    params_by_user = task.audience.get("params_by_user") or {}
     rendered_rows = []
     for user in users:
-        ctx = {"user": _user_context(user), "params": task.params}
+        user_params = params_by_user.get(str(user.id))
+        params = {**task.params, **user_params} if user_params else task.params
+        ctx = {"user": _user_context(user), "params": params}
         try:
             msg = render(
                 template.subject_template, template.body_template,

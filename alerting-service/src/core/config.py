@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     starrocks_host: str = "movies-starrocks"
     starrocks_port: int = 9030
     starrocks_user: str = "alert_reader"
-    starrocks_password: str = "alert_reader"
+    starrocks_password: str = "alert_reader"  # noqa: S105 — дефолтный dev-пароль
     starrocks_db: str = "ugc_analytics"
 
     # Sentry — пусто отключает интеграцию
@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     # Параметры движка
     rules_refresh_interval_sec: int = 60     # как часто перечитывать t_rules
     starrocks_query_timeout_sec: int = 30    # тайм-аут SQL-правила
+    dispatch_retention_days: int = 90        # хранение t_dispatch_history (retention партиций)
+    recovery_grace_sec: int = 300            # старше скольки секунд «running» запуск считаем осиротевшим
 
     @property
     def _pg_dsn_tail(self) -> str:

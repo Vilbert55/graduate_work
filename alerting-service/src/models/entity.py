@@ -4,10 +4,10 @@
 поэтому ORM-классы здесь используются только для SELECT.
 
 В рантайме реально читается только Rule (движком, при синхронизации jobs).
-Run и DispatchHistory сейчас не используются кодом — executor пишет в t_runs
-через raw text(), а t_dispatch_history пока не пишется вовсе. Они оставлены
-ради полноты Base.metadata: alembic --autogenerate сверяется с ней, и без них
-сгенерировал бы DROP этих таблиц. Удалять до перехода на ORM-запись нельзя.
+Run и DispatchHistory не используются для запросов — executor пишет в t_runs и
+t_dispatch_history через raw text() (в т.ч. чтобы попасть в нужную партицию).
+Они оставлены ради полноты Base.metadata: alembic --autogenerate сверяется с ней,
+и без них сгенерировал бы DROP этих таблиц. Удалять до перехода на ORM-запись нельзя.
 """
 import uuid
 from datetime import UTC, datetime
@@ -71,11 +71,14 @@ class Run(Base):
     notification_task_id = Column(UUID(as_uuid=True), nullable=True)
     status = Column(Text, nullable=False)
     error = Column(Text, nullable=True)
+    is_dry_run = Column(Boolean, nullable=False, default=False)
 
 
 class DispatchHistory(Base):
-    """История доставки. На неделе 2 — обычная таблица; партиционирование по
-    неделям и retention — задача недели 3 (см. ТЗ §12)."""
+    """История доставки (для frequency cap и аудита). Партиционирована по неделям
+    (PARTITION BY RANGE sent_at); партиции создаёт/дропает
+    alerting.maint_dispatch_partitions. Партиционирование в ORM не выражается —
+    модель нужна лишь для Base.metadata."""
     __tablename__ = "t_dispatch_history"
     __table_args__ = (
         PrimaryKeyConstraint("id", "sent_at"),
