@@ -4,6 +4,7 @@
 CREATE OR REPLACE VIEW notifications.v_tasks AS
 SELECT
     t.id,
+    t.code,
     t.name,
     t.is_enabled,
     t.channel,
@@ -27,7 +28,8 @@ JOIN notifications.t_templates tp ON tp.id = t.template_id;
 
 COMMENT ON VIEW notifications.v_tasks IS
 'Задания на рассылку с раскрытым шаблоном. Доступно роли notification_admin.
-Для изменений использовать: adm_create_task, adm_update_task, adm_enable_task, adm_disable_task.';
+Колонка code — бизнес-ключ задания, по нему ведётся управление.
+Для изменений использовать: adm_create_task, adm_update_task(code), adm_enable_task(code), adm_disable_task(code).';
 
 -- @statement
 

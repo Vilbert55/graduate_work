@@ -1,8 +1,8 @@
--- notifications.svc_requeue_stuck_messages — recovery worker:
+-- notifications._requeue_stuck_messages — recovery worker:
 -- возвращает в pending сообщения, застрявшие в queued/sending дольше таймаутов.
 -- Причины: упал publisher, упал sender, сообщение потеряно в RabbitMQ.
 -- Вызывается только воркером recovery.
-CREATE OR REPLACE FUNCTION notifications.svc_requeue_stuck_messages(
+CREATE OR REPLACE FUNCTION notifications._requeue_stuck_messages(
     p_queued_timeout_sec  INT  DEFAULT 300,
     p_sending_timeout_sec INT  DEFAULT 600,
     p_worker_id           TEXT DEFAULT 'recovery'
@@ -48,7 +48,7 @@ $$;
 
 -- @statement
 
-COMMENT ON FUNCTION notifications.svc_requeue_stuck_messages(INT, INT, TEXT) IS
+COMMENT ON FUNCTION notifications._requeue_stuck_messages(INT, INT, TEXT) IS
 'Recovery worker: возврат в pending сообщений, застрявших в queued или sending.
 Предназначена для вызова только воркером recovery.
 
@@ -65,4 +65,4 @@ COMMENT ON FUNCTION notifications.svc_requeue_stuck_messages(INT, INT, TEXT) IS
 
 -- @statement
 
-REVOKE EXECUTE ON FUNCTION notifications.svc_requeue_stuck_messages(INT, INT, TEXT) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION notifications._requeue_stuck_messages(INT, INT, TEXT) FROM PUBLIC;

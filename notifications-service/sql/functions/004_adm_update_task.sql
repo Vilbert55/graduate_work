@@ -1,7 +1,7 @@
 -- notifications.adm_update_task — изменить параметры задания.
 -- NULL-аргументы оставляют соответствующее поле без изменений.
 CREATE OR REPLACE FUNCTION notifications.adm_update_task(
-    p_task_id         UUID,
+    p_task_code       TEXT,
     p_cron_expression TEXT      DEFAULT NULL,
     p_start_at        TIMESTAMP DEFAULT NULL,
     p_end_at          TIMESTAMP DEFAULT NULL,
@@ -17,6 +17,7 @@ SET search_path = pg_catalog, notifications
 AS $$
 DECLARE
     v_template_id UUID;
+    v_task_id     UUID := notifications._task_id(p_task_code);
 BEGIN
     IF p_channel IS NOT NULL AND p_channel NOT IN ('email', 'ws') THEN
         RAISE EXCEPTION 'invalid_channel: %', p_channel;
@@ -42,22 +43,18 @@ BEGIN
         name            = COALESCE(p_name, name),
         next_run_at     = COALESCE(p_start_at, next_run_at),
         updated_at      = (now() AT TIME ZONE 'utc')
-    WHERE id = p_task_id;
-
-    IF NOT FOUND THEN
-        RAISE EXCEPTION 'task_not_found: %', p_task_id;
-    END IF;
+    WHERE id = v_task_id;
 END;
 $$;
 
 -- @statement
 
-COMMENT ON FUNCTION notifications.adm_update_task(UUID, TEXT, TIMESTAMP, TIMESTAMP, JSONB, JSONB, TEXT, TEXT, TEXT) IS
-'Изменить параметры существующего задания на рассылку.
+COMMENT ON FUNCTION notifications.adm_update_task(TEXT, TEXT, TIMESTAMP, TIMESTAMP, JSONB, JSONB, TEXT, TEXT, TEXT) IS
+'Изменить параметры существующего задания на рассылку (адресуется по code).
 NULL-аргументы оставляют соответствующие поля без изменений.
 
 Аргументы:
-  p_task_id         UUID            — идентификатор задания
+  p_task_code       TEXT            — бизнес-ключ задания (t_tasks.code)
   p_cron_expression TEXT DEFAULT NULL — новое cron-расписание; NULL = не менять
   p_start_at        TIMESTAMP DEFAULT NULL — новое время старта; NULL = не менять
   p_end_at          TIMESTAMP DEFAULT NULL — новое время окончания; NULL = не менять
@@ -67,9 +64,9 @@ NULL-аргументы оставляют соответствующие пол
   p_channel         TEXT DEFAULT NULL — новый канал: ''email'' | ''ws''; NULL = не менять
   p_name            TEXT DEFAULT NULL — новое имя задания; NULL = не менять
 
-Выбрасывает исключение task_not_found если задание не существует.';
+Выбрасывает исключение task_not_found если задание с таким code не существует.';
 
 -- @statement
 
-GRANT EXECUTE ON FUNCTION notifications.adm_update_task(UUID, TEXT, TIMESTAMP, TIMESTAMP, JSONB, JSONB, TEXT, TEXT, TEXT)
+GRANT EXECUTE ON FUNCTION notifications.adm_update_task(TEXT, TEXT, TIMESTAMP, TIMESTAMP, JSONB, JSONB, TEXT, TEXT, TEXT)
     TO notification_admin;

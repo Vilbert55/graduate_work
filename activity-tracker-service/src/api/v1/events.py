@@ -14,10 +14,12 @@ from src.models.events import (
     EventInput,
     EventInputClick,
     EventInputCustom,
+    EventInputRecommendation,
     EventInputView,
     EventReport,
     EventReportClick,
     EventReportCustom,
+    EventReportRecommendation,
     EventReportView,
 )
 
@@ -52,6 +54,14 @@ def post_view(json_data: EventInputView):
 def post_custom(json_data: EventInputCustom):
     """Принять кастомное событие."""
     return _send_and_respond(json_data, EventReportCustom, settings.kafka_topic_custom)
+
+
+@bp.post('/recommendation', endpoint='post_recommendation')
+@bp.input(EventInputRecommendation, location='json')
+@bp.output({'status': String()}, status_code=202)
+def post_recommendation(json_data: EventInputRecommendation):
+    """Принять событие реакции пользователя на рекомендацию из письма alerting-service."""
+    return _send_and_respond(json_data, EventReportRecommendation, settings.kafka_topic_recommendations)
 
 
 def _send_and_respond(input_data: EventInput, report_model_cls: type[EventReport], topic: str) -> dict[str, str]:

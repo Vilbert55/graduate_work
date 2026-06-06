@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, diploma, diploma-week3]
   pull_request:
     branches: [main]
 
@@ -15,6 +15,7 @@ jobs:
       - name: Lint with Ruff
         uses: chartboost/ruff-action@v1
         with:
+          version: "0.14.14"
           args: "check . --exclude migrations,admin-panel-service,alembic,tests,database_research,.venv,__pycache_"
 
   notifications-tests:
@@ -88,8 +89,31 @@ jobs:
             --abort-on-container-exit \
             --exit-code-from movies-tests-runner
 
+  alerting-tests:
+    needs: lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12.13"
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install dependencies
+        working-directory: alerting-service
+        run: poetry install --with dev
+
+      - name: Run unit tests
+        working-directory: alerting-service
+        run: poetry run pytest -v
+
   notify:
-    needs: [lint, notifications-tests, film-search-tests]  # ждём завершения всех задач
+    needs: [lint, notifications-tests, film-search-tests, alerting-tests]  # ждём завершения всех задач
     runs-on: ubuntu-latest
     if: always()  # выполняется даже при падении предыдущих этапов
     steps:
@@ -103,8 +127,9 @@ jobs:
             - Lint: ${{ needs.lint.result }}
             - Notifications tests: ${{ needs.notifications-tests.result }}
             - Film search tests: ${{ needs.film-search-tests.result }}
+            - Alerting tests: ${{ needs.alerting-tests.result }}
             Репозиторий: `${{ github.repository }}`
             Ветка: `${{ github.ref_name }}`
             Коммит: `${{ github.sha }}`
-            Сообщение: ${{ github.event.head_commit.message }}
+            Сообщение: `${{ github.event.head_commit.message }}`
           format: markdown

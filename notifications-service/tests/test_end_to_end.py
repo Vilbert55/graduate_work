@@ -35,7 +35,7 @@ async def test_welcome_email_flow(session_maker, mailpit):
         )).scalar()
         await s.execute(
             text(
-                "SELECT notifications.svc_send_user_event(:u, 'welcome', 'email', "
+                "SELECT notifications._send_user_event(:u, 'welcome', 'email', "
                 "'{}'::jsonb, :ik)",
             ),
             {"u": user_id, "ik": f"test-{uuid.uuid4()}"},
@@ -98,87 +98,87 @@ async def test_idempotency_create_task(session_maker):
 
 
 # ---------------------------------------------------------------------------
-# Тесты прав: роль notification_admin не должна вызывать svc_* функции
+# Тесты прав: роль notification_admin не должна вызывать _* функции
 #
 # Каждый тест:
 #   1. Получает соединение с SET LOCAL ROLE notification_admin.
 #   2. Открывает SAVEPOINT через begin_nested().
-#   3. Пытается вызвать svc_* функцию.
+#   3. Пытается вызвать _* функцию.
 #   4. Ожидает ProgrammingError (permission denied for function ...).
 #   5. Откатывает SAVEPOINT, сбрасывая состояние ошибки транзакции.
 # ---------------------------------------------------------------------------
 
 
-async def test_admin_cannot_call_svc_send_user_event(admin_conn):
-    """notification_admin не имеет EXECUTE на svc_send_user_event."""
+async def test_admin_cannot_call_send_user_event(admin_conn):
+    """notification_admin не имеет EXECUTE на _send_user_event."""
     sp = await admin_conn.begin_nested()
     with pytest.raises(ProgrammingError, match="permission denied"):
         await admin_conn.execute(text(
-            "SELECT notifications.svc_send_user_event("
+            "SELECT notifications._send_user_event("
             "'" + _DUMMY_UUID + "'::uuid, 'welcome', 'email', '{}'::jsonb, NULL, 'test')"
         ))
     await sp.rollback()
 
 
-async def test_admin_cannot_call_svc_claim_messages_batch(admin_conn):
-    """notification_admin не имеет EXECUTE на svc_claim_messages_batch."""
+async def test_admin_cannot_call_claim_messages_batch(admin_conn):
+    """notification_admin не имеет EXECUTE на _claim_messages_batch."""
     sp = await admin_conn.begin_nested()
     with pytest.raises(ProgrammingError, match="permission denied"):
         await admin_conn.execute(
-            text("SELECT notifications.svc_claim_messages_batch('test-worker', 1)"),
+            text("SELECT notifications._claim_messages_batch('test-worker', 1)"),
         )
     await sp.rollback()
 
 
-async def test_admin_cannot_call_svc_mark_message_sending(admin_conn):
-    """notification_admin не имеет EXECUTE на svc_mark_message_sending."""
+async def test_admin_cannot_call_mark_message_sending(admin_conn):
+    """notification_admin не имеет EXECUTE на _mark_message_sending."""
     sp = await admin_conn.begin_nested()
     with pytest.raises(ProgrammingError, match="permission denied"):
         await admin_conn.execute(text(
-            "SELECT notifications.svc_mark_message_sending('"
+            "SELECT notifications._mark_message_sending('"
             + _DUMMY_UUID + "'::uuid)"
         ))
     await sp.rollback()
 
 
-async def test_admin_cannot_call_svc_mark_message_sent(admin_conn):
-    """notification_admin не имеет EXECUTE на svc_mark_message_sent."""
+async def test_admin_cannot_call_mark_message_sent(admin_conn):
+    """notification_admin не имеет EXECUTE на _mark_message_sent."""
     sp = await admin_conn.begin_nested()
     with pytest.raises(ProgrammingError, match="permission denied"):
         await admin_conn.execute(text(
-            "SELECT notifications.svc_mark_message_sent('"
+            "SELECT notifications._mark_message_sent('"
             + _DUMMY_UUID + "'::uuid, 'test')"
         ))
     await sp.rollback()
 
 
-async def test_admin_cannot_call_svc_mark_message_failed(admin_conn):
-    """notification_admin не имеет EXECUTE на svc_mark_message_failed."""
+async def test_admin_cannot_call_mark_message_failed(admin_conn):
+    """notification_admin не имеет EXECUTE на _mark_message_failed."""
     sp = await admin_conn.begin_nested()
     with pytest.raises(ProgrammingError, match="permission denied"):
         await admin_conn.execute(text(
-            "SELECT notifications.svc_mark_message_failed('"
+            "SELECT notifications._mark_message_failed('"
             + _DUMMY_UUID + "'::uuid, 'err', 5, 'test')"
         ))
     await sp.rollback()
 
 
-async def test_admin_cannot_call_svc_requeue_stuck_messages(admin_conn):
-    """notification_admin не имеет EXECUTE на svc_requeue_stuck_messages."""
+async def test_admin_cannot_call_requeue_stuck_messages(admin_conn):
+    """notification_admin не имеет EXECUTE на _requeue_stuck_messages."""
     sp = await admin_conn.begin_nested()
     with pytest.raises(ProgrammingError, match="permission denied"):
         await admin_conn.execute(
-            text("SELECT notifications.svc_requeue_stuck_messages(300, 600, 'test')"),
+            text("SELECT notifications._requeue_stuck_messages(300, 600, 'test')"),
         )
     await sp.rollback()
 
 
-async def test_admin_cannot_call_svc_get_messages_for_user(admin_conn):
-    """notification_admin не имеет EXECUTE на svc_get_messages_for_user."""
+async def test_admin_cannot_call_get_messages_for_user(admin_conn):
+    """notification_admin не имеет EXECUTE на _get_messages_for_user."""
     sp = await admin_conn.begin_nested()
     with pytest.raises(ProgrammingError, match="permission denied"):
         await admin_conn.execute(text(
-            "SELECT notifications.svc_get_messages_for_user('"
+            "SELECT notifications._get_messages_for_user('"
             + _DUMMY_UUID + "'::uuid, 10)"
         ))
     await sp.rollback()

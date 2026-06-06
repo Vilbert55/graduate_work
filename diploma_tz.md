@@ -63,14 +63,14 @@ Mindbox, Sendsay, RetentionRocket (Россия), Customer.io, Braze, Klaviyo, B
 |---|---|
 | ФТ-1  | Аналитик создаёт правило одной SQL-функцией `alerting.adm_create_rule(...)`. Параметры — текст SQL-запроса, расписание, шаблон уведомления, канал доставки, лимиты. Все параметры валидируются. |
 | ФТ-2  | SQL правила обязан возвращать колонку `user_id` и опционально `context` (JSON с данными для подстановки в шаблон). |
-| ФТ-3  | Двухуровневый лимит уведомлений: минимальный интервал между сообщениями от одного правила одному пользователю + общий потолок сообщений на пользователя в сутки. |
-| ФТ-4  | Управление правилом: обновление, включение/выключение, мягкое удаление. |
+| ФТ-3  | Двухуровневый лимит уведомлений: минимальный интервал между сообщениями от одного правила одному пользователю (per-rule) + общий потолок сообщений на пользователя в сутки по всем правилам (единая настройка движка). |
+| ФТ-4  | Управление правилом: обновление, включение/выключение, удаление. |
 | ФТ-5  | Тестовый прогон правила — выполнить SQL без рассылки и вернуть размер аудитории до и после применения лимита, плюс несколько `user_id` для проверки. |
 | ФТ-6  | Ручной запуск правила вне расписания. |
 | ФТ-7  | Движок по расписанию каждого активного правила выполняет его SQL в StarRocks, применяет лимит уведомлений и создаёт одну задачу в `notifications-service`. Каждое срабатывание идемпотентно: повтор после сбоя не создаёт дублей. |
 | ФТ-8  | Представления для аудита: список правил со статусом, история срабатываний, история отправок (для разбора жалоб). |
 | ФТ-9  | Materialized views в StarRocks — по одному на каждый ключевой сценарий плюс один общий. Обновляются StarRocks автоматически. |
-| ФТ-10 | Таблицы измерений (`dim_films`, `dim_users`, `dim_genres`) синхронизируются раз в час из Postgres в StarRocks средствами самого StarRocks. Отдельного ETL-сервиса не требуется. |
+| ФТ-10 | Таблицы измерений (`dim_films`, `dim_users`, `dim_genres`, `dim_date`) синхронизируются раз в час из Postgres в StarRocks средствами самого StarRocks. Отдельного ETL-сервиса не требуется. |
 | ФТ-11 | BI-дашборды (2–3 чарта) поверх Materialized views в Apache Superset. |
 | ФТ-12 | `notifications-service` не модифицируется — используются только его публичные SQL-функции (`adm_create_task`, `adm_upsert_template`). |
 
@@ -109,7 +109,7 @@ Mindbox, Sendsay, RetentionRocket (Россия), Customer.io, Braze, Klaviyo, B
 | Компонент | Роль |
 |---|---|
 | `movies-alerting-migrations` | Init-контейнер: миграции схемы `alerting` в Postgres + создание SQL-функций, представлений, ролей. |
-| `movies-starrocks-dims-init` | Init-контейнер: создаёт `dim_films`, `dim_users`, `dim_genres` и Materialized views, регистрирует JDBC Catalog на Postgres и запускает `SUBMIT TASK` для часовой синхронизации измерений. |
+| `movies-starrocks-dims-init` | Init-контейнер: создаёт `dim_*`-таблицы, журнал отправок `dispatch_log` и Materialized views, регистрирует JDBC Catalog на Postgres и запускает `SUBMIT TASK` для часовой синхронизации измерений. |
 | `movies-alerting-engine` | Основной воркер: планировщик APScheduler, выполнение SQL-правил, проверка лимита уведомлений, создание задач в `notifications-service`, восстановление после сбоя. Отдельного HTTP-API нет — управление через SQL. |
 | `movies-superset` | Apache Superset с готовой конфигурацией подключения к StarRocks. |
 | `movies-superset-init` | Init-контейнер: загружает 2–3 готовых дашборда поверх Materialized views. |
@@ -118,21 +118,25 @@ Mindbox, Sendsay, RetentionRocket (Россия), Customer.io, Braze, Klaviyo, B
 
 **Приём пользовательских событий (уже работает).** Пользователь -> `activity-tracker` -> Kafka -> StarRocks. Таблица `user_events` пополняется потоково через Routine Load.
 
-**Подготовка измерений и витрин (новое).** Раз в час StarRocks собственным планировщиком перезаливает таблицы `dim_films / dim_users / dim_genres` из Postgres через JDBC Catalog. Materialized views поверх `user_events` и `dim_*` пересчитываются StarRocks асинхронно по факту изменения источников.
+**Подготовка измерений и витрин.** Раз в час StarRocks собственным планировщиком перезаливает таблицы `dim_films / dim_users / dim_genres` из Postgres через JDBC Catalog. Materialized views поверх `user_events` и `dim_*` пересчитываются StarRocks асинхронно по факту изменения источников.
 
 **Жизненный цикл правила (аналитик).** Аналитик в DBeaver вызывает `alerting.adm_create_rule(...)` — правило ложится в таблицу `t_rules`.
 
-**Срабатывание правила (новое).** Планировщик движка по расписанию каждого активного правила выполняет его SQL в StarRocks, получает аудиторию, отсекает пользователей, попавших под лимит уведомлений, и одной транзакцией пишет историю отправок и создаёт задачу в `notifications-service`. Идемпотентный ключ задачи защищает от дублей при повторе после сбоя.
+**Срабатывание правила.** Планировщик движка по расписанию каждого активного правила выполняет его SQL в StarRocks, получает аудиторию, отсекает пользователей, попавших под лимит уведомлений, и одной транзакцией пишет историю отправок и создаёт задачу в `notifications-service`. Идемпотентный ключ задачи защищает от дублей при повторе после сбоя.
 
 **Доставка (уже работает).** `notifications-service` разворачивает задачу в сообщения, кладёт в RabbitMQ — отправитель писем доставляет в Mailpit.
 
 **Визуализация.** Superset по MySQL-протоколу читает Materialized views и строит дашборды.
 
+**Замыкание контура.** В письмо вшита персональная ссылка на `GET /ugc/email/click` (`activity-tracker`). Клик публикует событие `recommendation` (`action=clicked`) в Kafka, оно возвращается в `user_events`, а витрина `mv_rule_conversion` строит воронку «отправлено -> перешли по ссылке». Контур «данные -> письмо -> данные» замыкается, и правила можно сравнивать по доле перешедших.
+
 ### 6.4 Изменения в существующих сервисах для интеграции
 
 | Сервис | Что меняется |
 |---|---|
-| **auth-service** | Alembic-миграция в `auth.users`: добавляем nullable-колонки `gender VARCHAR(16)`, `age_group VARCHAR(16)`, `country VARCHAR(2)`, `is_demo BOOLEAN DEFAULT FALSE`. Pydantic-схемы профиля (`/me`, регистрация) расширяются соответствующими полями (`is_demo` — только для внутреннего использования). |
+| **auth-service** | Alembic-миграция в `auth.users`: добавляем nullable-колонки `gender VARCHAR(16)`, `age INTEGER`, `country VARCHAR(2)`, `is_demo BOOLEAN DEFAULT FALSE`. Pydantic-схемы профиля (`/me`, регистрация) расширяются соответствующими полями (`is_demo` — только для внутреннего использования). |
+| **activity-tracker-service** | Новый эндпоинт `POST /ugc/api/v1/events/recommendation` принимает реакции пользователя на письма alerting (поля `rule_code`, `notification_message_id`, `action ∈ {opened, clicked, dismissed}`, опц. `film_id`). Плюс публичный `GET /ugc/email/click` — ссылка из письма: клик публикует recommendation-событие (`action=clicked`) без JWT (в проде ссылку подписывать). Новый Kafka-топик `recommendations`. Замыкает контур «правило -> задача -> письмо -> клик по ссылке -> факт обратно в StarRocks»: переходы видны в Superset (`mv_rule_conversion`). |
+| **starrocks_init/init.sql** | Таблица `user_events` переведена с `DUPLICATE KEY(request_id, user_id, event_type)` на **`PRIMARY KEY (request_id, event_type)`** — встроенная дедупликация StarRocks (REPLACE-семантика при конфликте PK). Добавлена Routine Load `recommendations_load` для нового event_type. Добавлены колонки `rule_code`, `notification_message_id`, `action`. |
 
 
 ### 6.5 Логическое разделение ответственностей
@@ -159,8 +163,8 @@ Mindbox, Sendsay, RetentionRocket (Россия), Customer.io, Braze, Klaviyo, B
 | ORM и миграции | SQLAlchemy 2.0 + Alembic | Соответствует `notifications-service`, `auth-service`, `community-content-service`. |
 | Драйвер Postgres | `psycopg[binary]` или `asyncpg` | Согласовано с остальным проектом. |
 | Драйвер StarRocks | `aiomysql` / `PyMySQL` | StarRocks общается по MySQL-протоколу. |
-| BI | Apache Superset 4.x | Open-source, есть MySQL-коннектор, лучше Metabase работает на больших аналитических объёмах. |
-| Синхронизация dim-таблиц | StarRocks JDBC Catalog + `SUBMIT TASK ... SCHEDULE` | Нативный механизм StarRocks для пакетной загрузки из внешних БД — парный к Routine Load (та же логика «оркестрация внутри StarRocks», но для batch). Отдельный Python-сервис (как `films-etl-service` для Elasticsearch) был бы оправдан при CDC или сложных преобразованиях; для трёх таблиц с полной перезаливкой раз в час это избыточно. |
+| BI | Apache Superset 6.1.0 | Open-source, есть MySQL-коннектор, лучше Metabase работает на больших аналитических объёмах. |
+| Синхронизация dim-таблиц | StarRocks JDBC Catalog + `SUBMIT TASK ... SCHEDULE` | Нативный механизм StarRocks для пакетной загрузки из внешних БД — парный к Routine Load (та же логика «оркестрация внутри StarRocks», но для batch). Отдельный Python-сервис (как `films-etl-service` для Elasticsearch) был бы оправдан при CDC или сложных преобразованиях; для нескольких таблиц с полной перезаливкой раз в час это избыточно. |
 | Логи и ошибки | Структурированные JSON-логи в ELK, ошибки в Glitchtip | Уже развёрнуто в проекте. |
 
 ---
@@ -174,11 +178,15 @@ Mindbox, Sendsay, RetentionRocket (Россия), Customer.io, Braze, Klaviyo, B
 | Функция | Назначение |
 |---|---|
 | `adm_create_rule(p_code, p_description, p_sql, p_cron, p_template_code, p_channel, p_frequency_cap, p_max_users, p_idempotency_key, p_created_by) -> UUID` | Создать правило. Идемпотентна. |
-| `adm_update_rule(p_rule_id, p_sql, p_cron, p_template_code, ...)` | Обновить (`NULL` = не менять). |
-| `adm_enable_rule(p_rule_id)` / `adm_disable_rule(p_rule_id)` | Переключатели. |
-| `adm_delete_rule(p_rule_id)` | Мягкое удаление: `is_deleted = true`. |
-| `adm_dry_run_rule(p_rule_id) -> table(matched int, after_cap int, sample uuid[])` | Тестовый прогон без рассылки. |
-| `adm_trigger_rule(p_rule_id) -> UUID (run_id)` | Ручной запуск сейчас вне расписания. |
+| `adm_update_rule(p_rule_code, p_sql, p_cron, p_template_code, ...)` | Обновить (`NULL` = не менять). |
+| `adm_enable_rule(p_rule_code)` / `adm_disable_rule(p_rule_code)` | Переключатели. |
+| `adm_delete_rule(p_rule_code)` | Полное удаление правила вместе с историей. |
+| `adm_dry_run_rule(p_rule_code) -> UUID (run_id)` | Тестовый прогон без рассылки. |
+| `adm_trigger_rule(p_rule_code) -> UUID (run_id)` | Ручной запуск сейчас вне расписания. |
+
+Все операции над существующим правилом адресуют его по человекочитаемому `code`
+(тому же, что задан в `adm_create_rule`), а не по `uuid` — администратору не нужно
+сперва искать идентификатор.
 
 ### 8.2 Представления
 
@@ -196,7 +204,9 @@ Mindbox, Sendsay, RetentionRocket (Россия), Customer.io, Braze, Klaviyo, B
 -- 1. Тестируем выборку в StarRocks (DBeaver)
 SELECT
     a.user_id,
-    jsonb_build_object('top_genres', t.top_genres) AS context
+    -- named_struct строит структуру ключ-значение, to_json делает из неё JSON-строку:
+    -- это и есть per-user context, который подставится в письмо
+    to_json(named_struct('top_genres', t.top_genres)) AS context
 FROM ugc_analytics.mv_user_activity a
 JOIN ugc_analytics.mv_user_top_genres t USING (user_id)
 WHERE a.was_active_last_month = TRUE
@@ -209,12 +219,12 @@ SELECT alerting.adm_create_rule(
     p_cron := '0 9 * * *',
     p_template_code := 'winback_recommendation',
     p_channel := 'email',
-    p_frequency_cap := '{"per_rule_per_user_days": 30, "per_user_per_day": 1}'::jsonb
+    p_frequency_cap := '{"per_rule_per_user_days": 30}'::jsonb  -- общий дневной потолок — настройка движка ALERTING_GLOBAL_PER_USER_PER_DAY
 );
 
 -- 3. Dry-run -> 4. Enable -> 5. Опционально trigger -> 6. Мониторинг через v_runs / v_dispatch
-SELECT * FROM alerting.adm_dry_run_rule('<rule_id>');
-SELECT alerting.adm_enable_rule('<rule_id>');
+SELECT alerting.adm_dry_run_rule('winback_active_user');  -- адресуем по code
+SELECT alerting.adm_enable_rule('winback_active_user');
 ```
 
 ---
@@ -235,10 +245,9 @@ CREATE TABLE alerting.t_rules (
     cron_expression   TEXT NOT NULL,
     template_code     TEXT NOT NULL,         -- ссылка на notifications.t_templates.code
     channel           TEXT NOT NULL,         -- email | ws
-    frequency_cap     JSONB NOT NULL DEFAULT '{}',
+    frequency_cap     JSONB NOT NULL DEFAULT '{}',   -- {"per_rule_per_user_days": N}; общий дневной потолок — настройка движка
     max_users         INTEGER NOT NULL DEFAULT 50000,
     is_enabled        BOOLEAN NOT NULL DEFAULT FALSE,
-    is_deleted        BOOLEAN NOT NULL DEFAULT FALSE,
     status            TEXT NOT NULL DEFAULT 'active',  -- active | invalid
     last_validation_error TEXT,
     next_run_at       TIMESTAMP,
@@ -248,7 +257,7 @@ CREATE TABLE alerting.t_rules (
     created_at        TIMESTAMP NOT NULL DEFAULT (now() AT TIME ZONE 'utc'),
     updated_at        TIMESTAMP NOT NULL DEFAULT (now() AT TIME ZONE 'utc')
 );
-CREATE INDEX ON alerting.t_rules (is_enabled, is_deleted, next_run_at);
+CREATE INDEX ON alerting.t_rules (is_enabled, next_run_at);
 
 -- История запусков
 CREATE TABLE alerting.t_runs (
@@ -284,22 +293,31 @@ CREATE INDEX ON alerting.t_dispatch_history (rule_id, user_id, sent_at DESC);
 
 ### 9.2 StarRocks, база `ugc_analytics`
 
-Существующее: `user_events` (наполняется Routine Load).
+Существующее (изменено): `user_events` (наполняется Routine Load). Таблица
+переведена с `DUPLICATE KEY` на **`PRIMARY KEY (request_id, event_type)`** —
+дедупликация обеспечивается транспортом (REPLACE-семантика StarRocks при
+конфликте PK), а не запросами в правилах. Добавлены колонки `rule_code`,
+`notification_message_id`, `action` под новый event_type `recommendation`.
 
 Добавляется:
 
 **Dim-таблицы** (синхронизируются раз в час из Postgres через JDBC Catalog + `SUBMIT TASK`):
 - `dim_films(film_id PK, title, type, genres ARRAY<STRING>, is_new BOOLEAN, creation_date, rating)` — `is_new` вычисляется по `creation_date > now() - INTERVAL 30 DAY`.
-- `dim_users(user_id PK, gender, age_group, country, segment_code, registered_at)` — `segment_code` производный (например, `F_25_34_RU`).
+- `dim_users(user_id PK, gender, age, country, segment_code, registered_at, is_demo)` — `segment_code` производный (`gender_ageband_country`, где возрастная полоса выводится из целочисленного `age` через `CASE WHEN`, напр. `female_25-34_RU`).
 - `dim_genres(genre_id PK, name)`
+- `dim_date(date PK, year, quarter, month, day, day_of_week, week_of_year, is_weekend, is_holiday)` — задействует ранее неиспользуемый `content.date_dimension` из `admin-panel-service`; синхронизируется одноразовым `SUBMIT TASK sync_dim_date` (растёт ровно на одну строку в сутки). Применяется в правилах вида «по выходным», «по пятницам», «в праздничные дни» через join — без дублирования date-арифметики в каждом SQL.
 
-Все три — `PRIMARY KEY` таблицы StarRocks (поддерживают `INSERT OVERWRITE`).
+Все четыре — `PRIMARY KEY` таблицы StarRocks (поддерживают `INSERT OVERWRITE`).
 
-**Materialized views** (3 минимум, по числу сценариев + общий):
+**Журнал отправок** `dispatch_log(rule_code, user_id, sent_at, channel)` — копия `alerting.t_dispatch_history` (тем же JDBC Catalog + `SUBMIT TASK`, джойн с `t_rules` ради `rule_code`). Нужна, чтобы воронку отклика считать целиком в StarRocks: «сколько отправлено» живёт в Postgres, «сколько перешло по ссылке» — в `user_events`.
+
+**Materialized views** (6 шт.):
 - `mv_user_activity` — для сценария возврата угасшего пользователя: `(user_id, watches_last_30d, was_active_last_month BOOLEAN, last_watch_at)`.
 - `mv_user_top_genres` — компаньон того же сценария: `(user_id, top_genres ARRAY<STRING>)` (top-3 жанра по числу просмотров за 30 дней).
 - `mv_segment_film_activity` — для сценария тренда в сегменте.
 - `mv_film_watch_hourly` — общий MV (часовые агрегаты по фильмам), используется и в Superset, и в дополнительных правилах.
+- `mv_weekend_film_activity` — пример агрегата с join к `dim_date.is_weekend`. Поддерживает сценарий «фильм X стал популярен на выходных -> промо в субботу утром».
+- `mv_rule_conversion` — воронка по каждому правилу: сколько писем отправлено (`dispatch_log`) и сколько пользователей перешло по ссылке (`user_events`, `event_type='recommendation'`, `action='clicked'`). Источник дашборда «отправлено -> перешли по ссылке».
 
 Все MV — async, refresh по факту изменения источников (StarRocks делает это автоматически).
 
@@ -307,7 +325,14 @@ CREATE INDEX ON alerting.t_dispatch_history (rule_id, user_id, sent_at DESC);
 
 ## 10. Демонстрация
 
-Показать на защите два сценария - «возврат угасшего пользователя» и «тренд в сегменте».
+Основные сценарии для защиты — **§10.2 «Возврат пользователя (win-back)»**
+и **§10.4 «Выходной всплеск (weekend burst)»**. Win-back — канонический
+паттерн отрасли и самый интуитивный для аудитории; weekend burst иллюстрирует
+архитектурное расширение `dim_date` и применение справочника дат в правилах.
+
+Дополнительный (для углублённого вопроса) — **§10.3 «Тренд в сегменте»**:
+самый сложный SQL (multi-join, оконные функции, `LEFT JOIN ... IS NULL`),
+показывает зрелость SQL-API.
 
 Канал в демо — только электронная почта (Mailpit как приёмник). WebSocket-канал поддерживается архитектурно.
 
@@ -315,10 +340,10 @@ CREATE INDEX ON alerting.t_dispatch_history (rule_id, user_id, sent_at DESC);
 
 Для подготовки и оживления сценариев добавляются две Python-утилиты (могут быть подкомандами одного CLI), запускаются вручную перед демо:
 
-- **`demo-seeder`** — создаёт N юзеров в `auth.users` с заполненными `gender / age_group / country` и `is_demo = TRUE`. Фильмы не создаёт — берутся существующие из фикстур `content.film_work`. Идемпотентен: повторный запуск удаляет юзеров с `is_demo = TRUE` и создаёт заново.
+- **`demo-seeder`** — создаёт N юзеров в `auth.users` с заполненными `gender / age / country` и `is_demo = TRUE` (возраст сэмплируется целым числом внутри полосы демо-сегмента). Фильмы не создаёт — берутся существующие из фикстур `content.film_work`. Идемпотентен: повторный запуск удаляет юзеров с `is_demo = TRUE` и создаёт заново.
 - **`event-trigger`** — генерирует события в Kafka только для демо-юзеров, подставляя реальные `film_id` из существующих фильмов (отбор по жанру/рейтингу под сценарий). Параметры (сценарий, окно времени, количество событий) задаются ключами командной строки.
 
-### 10.2 Сценарий A - Возврат пользователя (win-back)
+### 10.2 Сценарий A (основной) - Возврат пользователя (win-back)
 
 **Бизнес-история.** Пользователь был активен (≥3 просмотра в неделю в последний месяц) и вдруг не смотрит ничего уже 7 дней. -> Утром раз в день он получает письмо с подборкой свежих фильмов в его top-3 жанрах.
 
@@ -329,11 +354,11 @@ CREATE INDEX ON alerting.t_dispatch_history (rule_id, user_id, sent_at DESC);
 
 **Cron:** `0 9 * * *` (каждое утро в 9:00 UTC).
 
-**Cap:** не чаще 1 раза в 30 дней по этому правилу, плюс глобальный потолок 1 письмо/день.
+**Cap:** не чаще 1 раза в 30 дней по этому правилу (`per_rule_per_user_days=30`); общий дневной потолок на пользователя — глобальная настройка движка `ALERTING_GLOBAL_PER_USER_PER_DAY` (по умолчанию 3 письма/сутки по всем правилам).
 
-**Демо-триггер.** Перед демо `demo-seeder` создаёт N демо-юзеров. `event-trigger` для каждого из них льёт серию `view`-событий с `client_time` в диапазоне «30…8 дней назад» (создаёт паттерн «был активен») и затем тишину последние 7+ дней. Дополнительно льёт несколько событий с известными `film_id` определённых жанров, чтобы `mv_user_top_genres` дал предсказуемый результат. После часового refresh dims/MV (или ручного `EXECUTE TASK`) — тик engine, письма в Mailpit.
+**Демо-триггер.** Перед демо `demo-seeder` создаёт N демо-юзеров. `event-trigger` для каждого из них льёт серию `view`-событий с `client_time` в диапазоне «30…8 дней назад» (создаёт паттерн «был активен») и затем тишину последние 7+ дней. Дополнительно льёт несколько событий с известными `film_id` определённых жанров, чтобы `mv_user_top_genres` дал предсказуемый результат. После часового refresh dims/MV (или ручного `INSERT OVERWRITE` + `REFRESH MATERIALIZED VIEW ... WITH SYNC MODE`, см. `examples.sql` §7) — тик engine, письма в Mailpit.
 
-### 10.3 Сценарий B - Тренд в сегменте
+### 10.3 Сценарий B (дополнительный) - Тренд в сегменте
 
 **Бизнес-история.** Сегмент `women_25_34` за последние 24 часа активно смотрит фильм X (>100 уникальных зрителей при обычном уровне <20). -> Тому же сегменту, кто X ещё не смотрел, приходит рекомендация похожего нового релиза.
 
@@ -352,7 +377,7 @@ already_seen AS (
 )
 SELECT
   u.user_id,
-  jsonb_build_object('trending_film_id', t.film_id, 'segment', t.segment) AS context
+  to_json(named_struct('trending_film_id', t.film_id, 'segment', t.segment)) AS context
 FROM ugc_analytics.dim_users u
 JOIN trending t ON t.segment = u.segment_code
 LEFT JOIN already_seen a ON a.user_id = u.user_id AND a.film_id = t.film_id
@@ -361,61 +386,43 @@ WHERE a.user_id IS NULL
 
 **Cron:** `0 */6 * * *`.
 
-**Cap:** не чаще 1 раза в 7 дней; глобальный потолок 3 письма/день.
+**Cap:** не чаще 1 раза в 7 дней по этому правилу (`per_rule_per_user_days=7`); общий дневной потолок — та же глобальная настройка движка `ALERTING_GLOBAL_PER_USER_PER_DAY`.
 
 **Демо-триггер.** Перед демо `demo-seeder` создаёт пользователей целевого сегмента (`women_25_34`). `event-trigger` выбирает фильм X из существующих фикстур (по фильтру жанра/рейтинга) и генерирует всплеск просмотров этого фильма от пользователей. После часового refresh dim-таблиц и MV — тик правила, письма пользователям сегмента, которые X ещё не смотрели.
 
----
+### 10.4 Сценарий C (основной) — Выходной всплеск (weekend burst)
 
-## 11. План работ
+**Бизнес-история.** Группа пользователей активно смотрит подборку фильмов
+именно в субботу-воскресенье. -> В пятницу утром им уходит письмо с
+подборкой на грядущие выходные.
 
-### Неделя 1
+**MV `mv_weekend_film_activity`:** `(bucket_date DATE, film_id PK, views, unique_viewers)` — агрегат строится с фильтром `dim_date.is_weekend = TRUE`.
 
-- Выбор темы
-- Анализ существующего стека проекта
-- Драфт ТЗ (этот документ)
-- Архитектурная диаграмма (drawio)
-- Созвон с наставником, ревью ТЗ и архитектуры
-- Поправки по итогам созвона
+**Правило:**
+```sql
+SELECT
+  user_id,
+  to_json(named_struct('film_id', m.film_id)) AS context
+FROM ugc_analytics.mv_weekend_film_activity m
+JOIN ugc_analytics.user_events e ON e.film_id = m.film_id
+  AND e.event_type = 'view'
+  AND e.client_time > now() - INTERVAL 14 DAY
+WHERE m.bucket_date > current_date - INTERVAL 14 DAY
+GROUP BY user_id, m.film_id
+HAVING count(*) >= 3
+```
 
-### Неделя 2 - Хранилище и аналитический контур
+**Cron:** `0 9 * * 5` (каждую пятницу в 9:00 UTC).
+**Cap:** не чаще 1 раза в 14 дней.
 
-- **Миграция в `auth-service` (см. 6.4):** добавление колонок `gender / age_group / country / is_demo` в `auth.users` и расширение схем профиля.
-- Init-контейнер StarRocks: DDL для `dim_*` и `mv_*`, JDBC Catalog на Postgres + `SUBMIT TASK` для часовой синхронизации измерений.
-- CLI `demo-seeder` и `event-trigger` (см. 10.1).
-- Миграции схемы `alerting`: таблицы, роли, базовые представления.
-- SQL-функции управления правилами: `adm_create_rule`, `adm_update_rule`, `adm_enable_rule`, `adm_disable_rule`, `adm_delete_rule`.
-- Регистрация шаблонов уведомлений через `notifications.adm_upsert_template` (из init-контейнера `alerting-migrations`).
-- Минимальный движок (без лимита, без тестового прогона) — заготовка: читает `t_rules`, выполняет SQL, пишет логи.
-- Подключение Superset, один пробный чарт.
-- **Аналитическая записка** (обоснование выбора: JDBC Catalog vs Python ETL, MV vs DBT, APScheduler vs Celery).
-- Опционально — второй созвон с наставником.
-
-### Неделя 3 - Основной движок
-
-- Движок: цикл планировщика, валидация контракта колонок, тайм-аут и потолок размера выборки.
-- Двухуровневый лимит уведомлений + `t_dispatch_history` с партиционированием по неделям.
-- Создание задач через `notifications.adm_create_task` с идемпотентным ключом.
-- Функции тестового прогона и ручного запуска (`adm_dry_run_rule`, `adm_trigger_rule`).
-- Представления `v_rules`, `v_runs`, `v_dispatch`.
-- Восстановление после сбоя (при старте незавершённые `t_runs` помечаются и перезапускаются).
-- Superset: 2–3 дашборда поверх MV, загрузка через init-контейнер.
-- Сквозной тест: создание правила -> ручной запуск -> письмо в Mailpit.
-- **Демо ревьюеру в конце недели**.
-
-### Неделя 4 - Полировка и защита
-
-- Метрики и структурированные логи.
-- Краевые случаи: некорректный SQL, пустая выборка, недоступность StarRocks или `notifications-service`.
-- Документация: README сервиса, примеры правил в `examples.sql`.
-- Отладка демо-скриптов.
-- Подготовка презентации.
-- Тренировка выступления.
-- **Финальная защита**.
+**Демо-триггер.** `event-trigger --scenario weekend_burst` льёт view-события
+демо-юзеров только в субботу-воскресенье прошлой недели. Триггерит
+`mv_weekend_film_activity`. Иллюстрирует, как `dim_date` (бывший
+неиспользуемый `content.date_dimension`) упрощает date-арифметику в правилах.
 
 ---
 
-## 12. Риски
+## 11. Риски
 
 | № | Риск | Решение |
 |---|---|---|
@@ -424,20 +431,19 @@ WHERE a.user_id IS NULL
 | R5 | Сбой движка между выполнением SQL и созданием задачи -> потенциальный дубль | Идемпотентный ключ `alerting:{rule_id}:{run_id}` в `notifications.adm_create_task`. |
 | R6 | Один экземпляр движка - точка отказа | Осознанный компромисс MVP: автоперезапуск контейнера + восстановление прерванных запусков. |
 | R7 | Неоптимальный SQL аналитика подвешивает StarRocks | Тайм-аут запроса 30 секунд на уровне сессии, опционально — `EXPLAIN` при первой регистрации правила. |
-| R8 | Перекрытие правил - пользователь получает слишком много | Общий потолок «сообщений на пользователя в сутки». |
+| R8 | Перекрытие правил - пользователь получает слишком много | Общий потолок «сообщений на пользователя в сутки» — единая настройка движка `ALERTING_GLOBAL_PER_USER_PER_DAY` (одна на все правила). |
 
 
 
 ---
 
-## 13. Возможные улучшения
+## 12. Возможные улучшения
 
 Эти пункты сознательно вынесены за рамки 4-недельного диплома, но осмыслены и выделены в компромисс.
 
 | Улучшение | Краткое описание |
 |---|---|
-| **Leader election** | Заменить single-instance engine на N экземпляров с выбором лидера через Postgres advisory lock. Снимает SPOF, не требует внешних координаторов вроде etcd. Каждый воркер при старте пытается взять `pg_try_advisory_lock(<const>)`; владелец лока — активный лидер, остальные ждут наготове. |
-| **Retention/TTL для t_dispatch_history** | Сейчас таблица партиционирована по неделям, но партиции не дропаются — данные хранятся бессрочно. При больших объёмах рассылок (миллионы строк/сутки) индексы тяжелеют. Решение — крон-скрипт раз в сутки делает `DROP PARTITION` для партиций старше 90 дней. Лимиту уведомлений нужны данные за последние 30 дней, для аудита 90 хватает. |
-| **REST API для управления** | Сейчас аналитик управляет правилами только через SQL-функции в DBeaver. REST позволил бы интеграции из других сервисов, CI или будущего no-code UI. Реализация — тонкий слой на любом веб-фреймворке (FastAPI/Starlette/aiohttp), под капотом вызывающий те же SQL-функции; никакой логики не дублируется.
+| **Leader election** | Заменить single-instance engine на N экземпляров с выбором лидера через Postgres advisory lock. Каждый воркер при старте пытается взять `pg_try_advisory_lock(<const>)`; владелец лока — активный лидер, остальные ждут наготове. |
+| **REST API для управления** | Сейчас аналитик управляет правилами только через SQL-функции в DBeaver. REST позволил бы интеграции из других сервисов, CI или будущего GUI. Реализация - доп. слой на любом веб-фреймворке (FastAPI/aiohttp), под капотом вызывающий те же SQL-функции; никакой логики не дублируется.
 
 

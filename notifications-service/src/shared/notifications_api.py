@@ -47,7 +47,7 @@ async def claim_messages_batch(
     rows = (await session.execute(
         text(
             "SELECT message_id, channel "
-            "FROM notifications.svc_claim_messages_batch(:worker_id, :batch_size)"
+            "FROM notifications._claim_messages_batch(:worker_id, :batch_size)"
         ),
         {"worker_id": worker_id, "batch_size": batch_size},
     )).all()
@@ -62,7 +62,7 @@ async def mark_message_sending(
         text(
             "SELECT is_already_sent, is_dead, out_attempts, out_channel, out_user_id, "
             "       out_subject, out_body, out_body_format, out_recipient_address "
-            "FROM notifications.svc_mark_message_sending(:message_id)"
+            "FROM notifications._mark_message_sending(:message_id)"
         ),
         {"message_id": str(message_id)},
     )).one()
@@ -84,7 +84,7 @@ async def mark_message_sent(
 ) -> None:
     """Помечает сообщение как успешно отправленное."""
     await session.execute(
-        text("SELECT notifications.svc_mark_message_sent(:message_id, :worker_id)"),
+        text("SELECT notifications._mark_message_sent(:message_id, :worker_id)"),
         {"message_id": str(message_id), "worker_id": worker_id},
     )
 
@@ -102,7 +102,7 @@ async def mark_message_failed(
     """
     row = (await session.execute(
         text(
-            "SELECT notifications.svc_mark_message_failed("
+            "SELECT notifications._mark_message_failed("
             "    :message_id, :error, :max_attempts, :worker_id"
             ") AS new_status"
         ),
@@ -128,7 +128,7 @@ async def requeue_stuck_messages(
     """
     row = (await session.execute(
         text(
-            "SELECT notifications.svc_requeue_stuck_messages("
+            "SELECT notifications._requeue_stuck_messages("
             "    :queued_timeout, :sending_timeout, :worker_id"
             ") AS count"
         ),
@@ -153,17 +153,20 @@ async def create_task(  # noqa: PLR0913, PLR0917
     end_at: datetime | None = None,
     idempotency_key: str | None = None,
     created_by: str = "admin",
+    code: str | None = None,
 ) -> UUID:
     """Создаёт задание на рассылку уведомлений.
 
     Возвращает task_id нового или существующего задания (при совпадении idempotency_key).
+    code — необязательный человекочитаемый бизнес-ключ задания; задаётся, чтобы потом
+    управлять заданием через adm_*_task по code (одноразовым рассылкам не нужен).
     """
     row = (await session.execute(
         text(
             "SELECT notifications.adm_create_task("
             "    :template_code, :channel, CAST(:audience AS jsonb), :name, "
             "    CAST(:params AS jsonb), :cron, :start_at, :end_at, "
-            "    :idempotency_key, :created_by"
+            "    :idempotency_key, :created_by, :code"
             ") AS task_id"
         ),
         {
@@ -177,6 +180,7 @@ async def create_task(  # noqa: PLR0913, PLR0917
             "end_at": end_at,
             "idempotency_key": idempotency_key,
             "created_by": created_by,
+            "code": code,
         },
     )).one()
     return row.task_id

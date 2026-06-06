@@ -1,4 +1,4 @@
--- notifications.svc_mark_message_sending — sender: атомарно проверяет статус,
+-- notifications._mark_message_sending — sender: атомарно проверяет статус,
 -- блокирует строку, переводит в 'sending', возвращает payload для отправки.
 -- Вызывается воркерами email-sender и ws-gateway.
 --
@@ -9,7 +9,7 @@
 --
 -- OUT-параметры с префиксом out_ — чтобы избежать конфликта имён
 -- с колонками t_messages при чтении внутри функции.
-CREATE OR REPLACE FUNCTION notifications.svc_mark_message_sending(
+CREATE OR REPLACE FUNCTION notifications._mark_message_sending(
     p_message_id UUID
 ) RETURNS TABLE(
     is_already_sent      BOOLEAN,
@@ -64,7 +64,7 @@ $$;
 
 -- @statement
 
-COMMENT ON FUNCTION notifications.svc_mark_message_sending(UUID) IS
+COMMENT ON FUNCTION notifications._mark_message_sending(UUID) IS
 'Sender: проверка идемпотентности + перевод сообщения в статус sending.
 Предназначена для вызова только воркерами email-sender и ws-gateway.
 
@@ -86,4 +86,4 @@ COMMENT ON FUNCTION notifications.svc_mark_message_sending(UUID) IS
 
 -- @statement
 
-REVOKE EXECUTE ON FUNCTION notifications.svc_mark_message_sending(UUID) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION notifications._mark_message_sending(UUID) FROM PUBLIC;

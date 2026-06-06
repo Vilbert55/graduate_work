@@ -3,7 +3,7 @@
 --
 -- Соглашение об именовании функций:
 --   adm_* — функции для администратора (доступны через роль notification_admin)
---   svc_* — функции только для сервисов (не выдавать notification_admin)
+--   _*    — внутренние/сервисные функции (не выдаются notification_admin)
 
 -- =============================================================================
 -- Создание личного пользователя-администратора (выполнять под postgres)
@@ -62,14 +62,17 @@ SELECT notifications.adm_create_task(
     p_idempotency_key := 'maintenance-2026-05-15'
 );
 
--- Повторяющееся задание: каждую пятницу в 18:00
+-- Повторяющееся задание: каждую пятницу в 18:00.
+-- p_code — человекочитаемый бизнес-ключ; по нему потом управляем заданием
+-- (включить/выключить/изменить), не разыскивая uuid.
 SELECT notifications.adm_create_task(
     p_template_code   := 'system_announcement',
     p_channel         := 'ws',
     p_audience        := '{"type": "all_users"}'::jsonb,
     p_name            := 'Пятничный дайджест',
     p_params          := '{"title": "Дайджест", "message": "Подборка недели"}'::jsonb,
-    p_cron_expression := '0 18 * * 5'
+    p_cron_expression := '0 18 * * 5',
+    p_code            := 'friday_digest'
 );
 
 -- Рассылка конкретным пользователям
@@ -84,15 +87,17 @@ SELECT notifications.adm_create_task(
 -- Управление заданиями
 -- =============================================================================
 
+-- Управление идёт по бизнес-ключу code (задаётся в adm_create_task(p_code := ...)),
+
 -- Отключить задание
-SELECT notifications.adm_disable_task('<task_uuid>');
+SELECT notifications.adm_disable_task('friday_digest');
 
 -- Включить задание
-SELECT notifications.adm_enable_task('<task_uuid>');
+SELECT notifications.adm_enable_task('friday_digest');
 
 -- Изменить расписание задания (NULL-аргументы не меняют соответствующее поле)
 SELECT notifications.adm_update_task(
-    p_task_id         := '<task_uuid>',
+    p_task_code       := 'friday_digest',
     p_cron_expression := '0 10 * * 1'  -- теперь каждый понедельник в 10:00
 );
 

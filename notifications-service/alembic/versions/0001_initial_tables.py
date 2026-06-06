@@ -1,13 +1,14 @@
-"""Initial schema: tables (t_), SQL functions (adm_/svc_), views, role, seed
+"""Initial schema: tables (t_), SQL functions (adm_/_), views, role, seed
 
 Revision ID: 0001_initial
 Revises:
 Create Date: 2026-05-14
 
-Соглашения об именовании:
+Соглашения об именовании (как в alerting-service):
   Таблицы:   t_<name>
   Функции:   adm_<name> — для вызова администратором (DBeaver, notification_admin)
-             svc_<name> — для вызова только сервисом (Python-воркеры)
+             _<name>    — внутренние/сервисные (Python-воркеры, прочие сервисы);
+                          роли notification_admin не выдаются
   Представления:  v_<name>
 """
 from __future__ import annotations
@@ -75,6 +76,11 @@ def upgrade() -> None:
         "t_tasks",
         sa.Column("id", UUID(as_uuid=True), primary_key=True,
                   server_default=sa.text("gen_random_uuid()")),
+        # code — человекочитаемый бизнес-ключ, по которому admin адресует задание
+        # (adm_enable_task/adm_disable_task/adm_update_task). NULLABLE: одноразовые и
+        # программные рассылки (свой код им не нужен) остаются без code, ими управляют
+        # программно. UNIQUE допускает несколько NULL — это и нужно.
+        sa.Column("code", sa.String(64), nullable=True),
         sa.Column("name", sa.String(255), nullable=False),
         sa.Column("template_id", UUID(as_uuid=True),
                   sa.ForeignKey(f"{SCHEMA}.t_templates.id"), nullable=False),
@@ -94,6 +100,7 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(), nullable=False,
                   server_default=sa.text("(now() AT TIME ZONE 'utc')")),
         sa.UniqueConstraint("idempotency_key", name="uq_t_tasks_idempotency_key"),
+        sa.UniqueConstraint("code", name="uq_t_tasks_code"),
         sa.CheckConstraint("channel IN ('email','ws')", name="ck_t_tasks_channel"),
         sa.CheckConstraint("end_at IS NULL OR end_at > start_at", name="ck_t_tasks_end_after_start"),
         schema=SCHEMA,
@@ -168,18 +175,19 @@ def downgrade() -> None:
     op.execute("DROP VIEW IF EXISTS notifications.v_messages")
     op.execute("DROP VIEW IF EXISTS notifications.v_tasks")
 
-    op.execute("DROP FUNCTION IF EXISTS notifications.svc_get_messages_for_user(UUID, INT)")
-    op.execute("DROP FUNCTION IF EXISTS notifications.svc_requeue_stuck_messages(INT, INT, TEXT)")
-    op.execute("DROP FUNCTION IF EXISTS notifications.svc_mark_message_failed(UUID, TEXT, INT, TEXT)")
-    op.execute("DROP FUNCTION IF EXISTS notifications.svc_mark_message_sent(UUID, TEXT)")
-    op.execute("DROP FUNCTION IF EXISTS notifications.svc_mark_message_sending(UUID)")
-    op.execute("DROP FUNCTION IF EXISTS notifications.svc_claim_messages_batch(TEXT, INT)")
-    op.execute("DROP FUNCTION IF EXISTS notifications.svc_send_user_event(UUID, TEXT, TEXT, JSONB, TEXT, TEXT)")
-    op.execute("DROP FUNCTION IF EXISTS notifications.adm_disable_task(UUID)")
-    op.execute("DROP FUNCTION IF EXISTS notifications.adm_enable_task(UUID)")
-    op.execute("DROP FUNCTION IF EXISTS notifications.adm_update_task(UUID, TEXT, TIMESTAMP, TIMESTAMP, JSONB, JSONB, TEXT, TEXT, TEXT)")
-    op.execute("DROP FUNCTION IF EXISTS notifications.adm_create_task(TEXT, TEXT, JSONB, TEXT, JSONB, TEXT, TIMESTAMP, TIMESTAMP, TEXT, TEXT)")
+    op.execute("DROP FUNCTION IF EXISTS notifications._get_messages_for_user(UUID, INT)")
+    op.execute("DROP FUNCTION IF EXISTS notifications._requeue_stuck_messages(INT, INT, TEXT)")
+    op.execute("DROP FUNCTION IF EXISTS notifications._mark_message_failed(UUID, TEXT, INT, TEXT)")
+    op.execute("DROP FUNCTION IF EXISTS notifications._mark_message_sent(UUID, TEXT)")
+    op.execute("DROP FUNCTION IF EXISTS notifications._mark_message_sending(UUID)")
+    op.execute("DROP FUNCTION IF EXISTS notifications._claim_messages_batch(TEXT, INT)")
+    op.execute("DROP FUNCTION IF EXISTS notifications._send_user_event(UUID, TEXT, TEXT, JSONB, TEXT, TEXT)")
+    op.execute("DROP FUNCTION IF EXISTS notifications.adm_disable_task(TEXT)")
+    op.execute("DROP FUNCTION IF EXISTS notifications.adm_enable_task(TEXT)")
+    op.execute("DROP FUNCTION IF EXISTS notifications.adm_update_task(TEXT, TEXT, TIMESTAMP, TIMESTAMP, JSONB, JSONB, TEXT, TEXT, TEXT)")
+    op.execute("DROP FUNCTION IF EXISTS notifications.adm_create_task(TEXT, TEXT, JSONB, TEXT, JSONB, TEXT, TIMESTAMP, TIMESTAMP, TEXT, TEXT, TEXT)")
     op.execute("DROP FUNCTION IF EXISTS notifications.adm_upsert_template(TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, BOOLEAN)")
+    op.execute("DROP FUNCTION IF EXISTS notifications._task_id(TEXT)")
 
     op.execute("REVOKE ALL ON SCHEMA notifications FROM notification_admin")
     op.execute("DROP ROLE IF EXISTS notification_admin")

@@ -1,6 +1,6 @@
--- notifications.svc_get_messages_for_user — выдача пользователю его уведомлений.
+-- notifications._get_messages_for_user — выдача пользователю его уведомлений.
 -- Предназначена для вызова из API-сервиса (личный кабинет).
-CREATE OR REPLACE FUNCTION notifications.svc_get_messages_for_user(
+CREATE OR REPLACE FUNCTION notifications._get_messages_for_user(
     p_user_id UUID,
     p_limit   INT DEFAULT 50
 ) RETURNS TABLE(
@@ -26,7 +26,7 @@ $$;
 
 -- @statement
 
-COMMENT ON FUNCTION notifications.svc_get_messages_for_user(UUID, INT) IS
+COMMENT ON FUNCTION notifications._get_messages_for_user(UUID, INT) IS
 'Список уведомлений пользователя для API личного кабинета.
 Предназначена для вызова из API-сервиса; не предназначена для прямого вызова администратором
 (для мониторинга использовать представление v_messages).
@@ -39,4 +39,4 @@ COMMENT ON FUNCTION notifications.svc_get_messages_for_user(UUID, INT) IS
 
 -- @statement
 
-REVOKE EXECUTE ON FUNCTION notifications.svc_get_messages_for_user(UUID, INT) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION notifications._get_messages_for_user(UUID, INT) FROM PUBLIC;

@@ -28,6 +28,26 @@ class UserCreate(BaseModel):
         description="Фамилия",
         example="Doe",
     )
+    gender: str | None = Field(
+        None,
+        max_length=16,
+        description="Пол (male/female/other) — нужен для сегментации в alerting-service",
+        example="male",
+    )
+    age: int | None = Field(
+        None,
+        ge=0,
+        le=150,
+        description="Возраст (полных лет) — нужен для сегментации в alerting-service",
+        example=27,
+    )
+    country: str | None = Field(
+        None,
+        min_length=2,
+        max_length=2,
+        description="ISO-3166-1 alpha-2 код страны",
+        example="RU",
+    )
 
     class Config:
         json_schema_extra = {
@@ -36,6 +56,9 @@ class UserCreate(BaseModel):
                 "password": "StrongP@ss1",
                 "first_name": "John",
                 "last_name": "Doe",
+                "gender": "male",
+                "age": 27,
+                "country": "RU",
             },
         }
 

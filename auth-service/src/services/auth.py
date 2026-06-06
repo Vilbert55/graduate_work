@@ -46,6 +46,9 @@ class AuthService:
             password=hashed_password,
             first_name=user_data.first_name,
             last_name=user_data.last_name,
+            gender=user_data.gender,
+            age=user_data.age,
+            country=user_data.country,
         )
         self.db.add(user)
         await self.db.commit()
