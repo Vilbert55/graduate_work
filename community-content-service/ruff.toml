@@ -43,11 +43,5 @@ ignore = [
   "DOC201",
   # `yield` is not documented in docstring
   "DOC402",
-  "G004",
-  # too-many-try-statements — конфликтует с «вся транзакция / реконнект в одном try»
-  "PLW0717",
-  # yield в async-генераторе внутри контекст-менеджера — штатный паттерн FastAPI-зависимости get_session
-  "ASYNC119",
-  # context-manager-does-not-catch-exceptions — штатный FastAPI lifespan (yield без try/finally)
-  "RUF075"
+  "G004"
 ]

@@ -15,7 +15,7 @@ jobs:
       - name: Lint with Ruff
         uses: chartboost/ruff-action@v1
         with:
-          version: "0.15.16"
+          version: "0.14.14"
           args: "check . --exclude migrations,admin-panel-service,alembic,tests,database_research,.venv,__pycache_"
 
   notifications-tests:
