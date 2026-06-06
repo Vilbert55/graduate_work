@@ -34,6 +34,77 @@ $$;
 
 -- @statement
 
+-- Статическая проверка SQL правила. Соединения Postgres -> StarRocks нет,
+-- поэтому EXPLAIN здесь невозможен; проверяем только форму запроса: это запрос
+-- на чтение (SELECT/WITH), один оператор, есть колонка user_id. Реальную
+-- проверку исполнимости делает adm_dry_run_rule (движок реально выполняет SQL
+-- под alert_reader). NULL пропускается (в adm_update_rule значит «не менять»).
+CREATE OR REPLACE FUNCTION alerting._check_rule_sql(p_sql TEXT)
+RETURNS VOID
+LANGUAGE plpgsql
+SET search_path = pg_catalog, alerting
+AS $$
+DECLARE
+    v_sql TEXT := btrim(p_sql);
+BEGIN
+    IF p_sql IS NULL THEN
+        RETURN;
+    END IF;
+    IF v_sql = '' THEN
+        RAISE EXCEPTION 'invalid_sql: empty';
+    END IF;
+    IF v_sql !~* '^(select|with)\y' THEN
+        RAISE EXCEPTION 'invalid_sql: query must start with SELECT or WITH';
+    END IF;
+    -- Точка с запятой не в самом конце = несколько операторов.
+    IF rtrim(v_sql, E'; \n\t') ~ ';' THEN
+        RAISE EXCEPTION 'invalid_sql: only a single statement is allowed';
+    END IF;
+    IF v_sql !~* 'user_id' THEN
+        RAISE EXCEPTION 'invalid_sql: query must return column user_id';
+    END IF;
+END;
+$$;
+
+-- @statement
+
+-- Проверка frequency_cap правила: это JSON-объект, единственный допустимый
+-- ключ — per_rule_per_user_days (целое > 0). Общий дневной потолок на
+-- пользователя задаётся настройкой движка ALERTING_GLOBAL_PER_USER_PER_DAY, а
+-- не в правиле. NULL и пустой объект допустимы (лимит per-rule не задан).
+CREATE OR REPLACE FUNCTION alerting._check_frequency_cap(p_cap JSONB)
+RETURNS VOID
+LANGUAGE plpgsql
+SET search_path = pg_catalog, alerting
+AS $$
+DECLARE
+    v_key TEXT;
+    v_val JSONB;
+BEGIN
+    IF p_cap IS NULL THEN
+        RETURN;
+    END IF;
+    IF jsonb_typeof(p_cap) <> 'object' THEN
+        RAISE EXCEPTION 'invalid_frequency_cap: must be a JSON object';
+    END IF;
+    FOR v_key, v_val IN SELECT key, value FROM jsonb_each(p_cap) LOOP
+        IF v_key = 'per_user_per_day' THEN
+            RAISE EXCEPTION
+                'invalid_frequency_cap: per_user_per_day is now a global engine setting (ALERTING_GLOBAL_PER_USER_PER_DAY), not a per-rule key';
+        END IF;
+        IF v_key <> 'per_rule_per_user_days' THEN
+            RAISE EXCEPTION 'invalid_frequency_cap: unknown key "%", allowed: per_rule_per_user_days', v_key;
+        END IF;
+        IF jsonb_typeof(v_val) <> 'number' OR (v_val::numeric) <= 0
+           OR (v_val::numeric) <> floor(v_val::numeric) THEN
+            RAISE EXCEPTION 'invalid_frequency_cap: "%" must be a positive integer', v_key;
+        END IF;
+    END LOOP;
+END;
+$$;
+
+-- @statement
+
 -- Поставить правило в очередь на исполнение движком: создать t_runs со
 -- статусом 'running' и послать NOTIFY 'alerting_trigger' с пейлоадом
 -- '<p_kind>:<rule_id>:<run_id>'. p_kind — 'trigger' (рассылка) или 'dryrun'

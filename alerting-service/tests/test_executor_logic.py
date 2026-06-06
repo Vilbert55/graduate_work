@@ -1,5 +1,5 @@
-"""Юнит-тесты чистой бизнес-логики движка (НФТ-6): разбор контракта колонок
-SQL-правила, парсинг per-user context, двухуровневый frequency cap.
+"""Юнит-тесты чистой бизнес-логики движка: разбор контракта колонок SQL-правила,
+парсинг per-user context, разбор настроек и фильтр frequency cap.
 
 Запуск:  cd alerting-service && poetry run pytest -v
 """
@@ -8,16 +8,14 @@ import uuid
 import pytest
 
 from src.services.executor import (
-    _coerce_cap,
+    FrequencyCap,
     _extract_audience,
     _filter_by_cap,
     _parse_context,
 )
 
 
-# ---------------------------------------------------------------------------
-# Контракт колонок: SQL правила обязан вернуть user_id, опционально context (ФТ-2)
-# ---------------------------------------------------------------------------
+# Контракт колонок: SQL правила обязан вернуть user_id, опционально context.
 
 class TestExtractAudience:
     def test_user_id_with_context(self):
@@ -28,7 +26,7 @@ class TestExtractAudience:
         assert _extract_audience([{"user_id": "u1"}]) == [("u1", None)]
 
     def test_missing_user_id_column_raises(self):
-        # Нарушение контракта = ошибка SQL правила (обработка ошибок, НФТ-6).
+        # Нарушение контракта = ошибка SQL правила, которую движок ловит и логирует.
         with pytest.raises(ValueError, match="user_id"):
             _extract_audience([{"film_id": "f1"}])
 
@@ -48,9 +46,7 @@ class TestExtractAudience:
         assert _extract_audience([{"user_id": u}]) == [(str(u), None)]
 
 
-# ---------------------------------------------------------------------------
-# Разбор per-user context (StarRocks отдаёт JSON строкой)
-# ---------------------------------------------------------------------------
+# Разбор per-user context (StarRocks отдаёт JSON строкой).
 
 class TestParseContext:
     def test_json_string_object(self):
@@ -69,9 +65,7 @@ class TestParseContext:
         assert _parse_context("not-json") is None
 
 
-# ---------------------------------------------------------------------------
-# Frequency cap (ФТ-3): чистый фильтр + нормализация конфигурации
-# ---------------------------------------------------------------------------
+# Frequency cap: чистый фильтр аудитории.
 
 class TestFilterByCap:
     def test_removes_blocked_preserving_context(self):
@@ -86,15 +80,39 @@ class TestFilterByCap:
         assert _filter_by_cap([("u1", None)], {"u1"}) == []
 
 
-class TestCoerceCap:
-    def test_json_string(self):
-        assert _coerce_cap('{"per_user_per_day": 1}') == {"per_user_per_day": 1}
+# Frequency cap: разбор настроек. per_rule_per_user_days — из правила,
+# per_user_per_day — глобальная настройка движка (не из правила).
+
+class TestFrequencyCap:
+    def test_per_rule_from_json_string(self):
+        cap = FrequencyCap.build('{"per_rule_per_user_days": 30}', 0)
+        assert cap == FrequencyCap(per_rule_per_user_days=30, per_user_per_day=None)
+
+    def test_per_rule_from_dict(self):
+        cap = FrequencyCap.build({"per_rule_per_user_days": 30}, 0)
+        assert cap.per_rule_per_user_days == 30
+
+    def test_global_per_user_per_day(self):
+        cap = FrequencyCap.build({}, 3)
+        assert cap == FrequencyCap(per_rule_per_user_days=None, per_user_per_day=3)
+
+    def test_rule_per_user_per_day_is_ignored(self):
+        # per_user_per_day — общий потолок, берётся только из настройки движка;
+        # одноимённый ключ в правиле игнорируется.
+        cap = FrequencyCap.build({"per_user_per_day": 99}, 0)
+        assert cap.per_user_per_day is None
 
     def test_none_is_empty(self):
-        assert _coerce_cap(None) == {}
+        cap = FrequencyCap.build(None, 0)
+        assert cap.is_empty
 
     def test_empty_string_is_empty(self):
-        assert _coerce_cap("") == {}
+        assert FrequencyCap.build("", 0).is_empty
 
-    def test_dict_passthrough(self):
-        assert _coerce_cap({"per_rule_per_user_days": 30}) == {"per_rule_per_user_days": 30}
+    def test_zero_global_disables_level(self):
+        assert FrequencyCap.build({}, 0).per_user_per_day is None
+
+    def test_both_levels(self):
+        cap = FrequencyCap.build({"per_rule_per_user_days": 7}, 3)
+        assert (cap.per_rule_per_user_days, cap.per_user_per_day) == (7, 3)
+        assert not cap.is_empty

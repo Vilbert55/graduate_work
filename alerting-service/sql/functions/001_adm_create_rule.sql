@@ -1,10 +1,11 @@
 -- alerting.adm_create_rule — создать правило. Идемпотентна через p_idempotency_key.
 --
 -- Валидация:
+--   p_sql                   — запрос на чтение (SELECT/WITH), один оператор, есть user_id
 --   p_channel               — 'email' | 'ws'
 --   p_template_code         — должен существовать в notifications.t_templates (is_active=TRUE)
 --   p_cron                  — синтаксически валидное cron-выражение (5 полей)
---   p_frequency_cap         — JSONB-объект, может быть пустым
+--   p_frequency_cap         — JSON-объект; допустим только ключ per_rule_per_user_days (целое > 0)
 --   p_max_users             — > 0
 CREATE OR REPLACE FUNCTION alerting.adm_create_rule(
     p_code            TEXT,
@@ -25,8 +26,10 @@ AS $$
 DECLARE
     v_rule_id UUID;
 BEGIN
+    PERFORM alerting._check_rule_sql(p_sql);
     PERFORM alerting._check_channel(p_channel);
     PERFORM alerting._check_cron(p_cron);
+    PERFORM alerting._check_frequency_cap(p_frequency_cap);
 
     IF p_max_users IS NULL OR p_max_users <= 0 THEN
         RAISE EXCEPTION 'invalid_max_users: must be > 0';
@@ -75,7 +78,7 @@ COMMENT ON FUNCTION alerting.adm_create_rule(TEXT, TEXT, TEXT, TEXT, TEXT, TEXT,
   p_cron            TEXT  — cron-расписание срабатывания (5 полей)
   p_template_code   TEXT  — код активного шаблона из notifications.t_templates
   p_channel         TEXT  — ''email'' | ''ws''
-  p_frequency_cap   JSONB DEFAULT {} — лимиты вида {"per_rule_per_user_days": 30, "per_user_per_day": 1}
+  p_frequency_cap   JSONB DEFAULT {} — лимит вида {"per_rule_per_user_days": 30} (не чаще раза в N дней по этому правилу). Общий дневной потолок на пользователя — настройка движка ALERTING_GLOBAL_PER_USER_PER_DAY, не здесь.
   p_max_users       INT   DEFAULT 50000 — потолок выборки
   p_idempotency_key TEXT  DEFAULT NULL  — уникальный ключ, повтор вернёт существующий rule_id
   p_created_by      TEXT  DEFAULT ''admin''

@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     starrocks_query_timeout_sec: int = 30    # тайм-аут SQL-правила
     dispatch_retention_days: int = 90        # хранение t_dispatch_history (retention партиций)
     recovery_grace_sec: int = 300            # старше скольки секунд «running» запуск считаем осиротевшим
+    # Общий потолок писем на пользователя в сутки по ВСЕМ правилам (0 — выключен).
+    # Один на всю систему: страхует от перекрытия правил (см. frequency cap).
+    global_per_user_per_day: int = 3
 
     @property
     def _pg_dsn_tail(self) -> str:

@@ -17,8 +17,10 @@ AS $$
 DECLARE
     v_rule_id UUID := alerting._rule_id(p_rule_code);
 BEGIN
+    PERFORM alerting._check_rule_sql(p_sql);
     PERFORM alerting._check_channel(p_channel);
     PERFORM alerting._check_cron(p_cron);
+    PERFORM alerting._check_frequency_cap(p_frequency_cap);
 
     IF p_max_users IS NOT NULL AND p_max_users <= 0 THEN
         RAISE EXCEPTION 'invalid_max_users: must be > 0';

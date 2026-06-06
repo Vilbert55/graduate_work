@@ -1,90 +1,113 @@
-# Демонстрация alerting-service (недели 2–3)
+# Сценарий демонстрации (запись видео)
 
-Полная ручная демонстрация замкнутого контура: от события пользователя до
-доставленного письма, со всеми возможностями недели 3 — per-user контекст в
+Шпаргалка для записи экрана по всей дипломной части: замкнутый контур от события
+пользователя до доставленного письма, со всеми возможностями — per-user контекст в
 письме, лимит уведомлений, история доставки с партициями, восстановление после
-сбоя.
+сбоя, BI в Superset.
+
+Обозначения по ходу файла:
+- 🎬 **Показать** — то, что попадает в кадр видео.
+- 🔍 **Проверка (для себя)** — контроль, что всё работает; в видео можно не показывать.
+
+Весь SQL выполняется в **DBeaver** (наглядно), а не в `docker exec`. БД-операции
+StarRocks под `root` — в отдельном подключении DBeaver. Готовые запросы аналитика
+лежат в `alerting-service/examples.sql`.
 
 Контур целиком:
 ```
-seed-users → trigger-events → Kafka → Routine Load → user_events
-   → REFRESH mv_* → adm_create_rule → (dry-run) → adm_trigger_rule
-   → frequency cap → t_dispatch_history → notifications.adm_create_task (per-user context)
-   → RabbitMQ → email-sender → Mailpit
+seed-users -> trigger-events -> Kafka -> Routine Load -> user_events
+   -> REFRESH mv_* -> adm_create_rule -> dry-run -> adm_trigger_rule
+   -> frequency cap -> t_dispatch_history -> notifications.adm_create_task (per-user context)
+   -> RabbitMQ -> email-sender -> Mailpit
 ```
 
-Инструменты: **терминал**, **DBeaver** (или `psql`), **браузер**, опц. **Postman**.
-
 ---
 
-## 0. Доступы
+## 0. Подготовка: подключения DBeaver и GUI
 
-| Что | Адрес | Логин / пароль |
+🎬 Показать в начале видео три подключения DBeaver и вкладки браузера.
+
+**DBeaver — три подключения:**
+
+| Имя | Драйвер | Хост:порт | БД | Логин / пароль |
+|---|---|---|---|---|
+| `movies-pg` (alerting/notifications) | PostgreSQL | `localhost:5438` | `movies` | `postgres` / *(POSTGRES_PASSWORD из `.env`)* |
+| `starrocks-reader` (аналитик) | MySQL | `localhost:9030` | `ugc_analytics` | `alert_reader` / `alert_reader` |
+| `starrocks-root` (админ витрин) | MySQL | `localhost:9030` | `ugc_analytics` | `root` / *(пусто)* |
+
+> StarRocks говорит по MySQL-протоколу, поэтому в DBeaver выбираем драйвер **MySQL**
+> и указываем порт `9030`. Для роли `alert_reader` доступен только SELECT — это и
+> показывает, что правило аналитика физически не может ничего изменить.
+
+**Браузер — вкладки:**
+
+| GUI | URL | Логин |
 |---|---|---|
-| Postgres (схемы `alerting`, `notifications`, `auth`) | `localhost:5438`, БД `movies` | `postgres` / *(POSTGRES_PASSWORD из `.env`)* |
-| StarRocks — аналитик (только SELECT) | MySQL-драйвер, `localhost:9030`, БД `ugc_analytics` | `alert_reader` / `alert_reader` |
-| StarRocks — админ (REFRESH/INSERT OVERWRITE) | `localhost:9030` | `root` / *(пусто)* |
 | Mailpit (приёмник писем) | http://localhost:8025 | — |
 | Superset (BI) | http://localhost:8088 | `admin` / `admin` |
-| Kafka UI | http://localhost:8081 | — |
-
-> Шпаргалка аналитика с готовыми запросами — `alerting-service/examples.sql`.
-> В примерах ниже команды к Postgres/StarRocks даны через `docker exec`, чтобы
-> демо воспроизводилось без настройки DBeaver; в DBeaver те же SQL вводятся в
-> окне запроса.
+| Kafka UI | http://localhost:8080 | — |
+| RabbitMQ | http://localhost:15672 | `guest` / `guest` |
 
 ---
 
-## 1. Поднять стек и проверить
+## 1. Поднять стек
 
 ```bash
 cd ~/praktikum/graduate_work
-docker compose up -d --build           # поднимет весь стек (StarRocks ~1–2 мин)
-
-# Все init/migrations отработали с кодом 0?
-docker compose ps -a --format '{{.Name}}\t{{.Status}}' \
-  | grep -E '(init|migrations)' | grep -v 'Exited (0)' \
-  && echo "ВНИМАНИЕ: что-то упало" || echo "OK: все init отработали"
-
-# Движок поднялся (планировщик + слушатель + обслуживание партиций)?
-docker compose logs movies-alerting-engine | grep -E 'started|maint|listening'
+docker compose up -d --build        # StarRocks поднимается ~1–2 мин
 ```
 
-Ожидаем в логах движка: `alerting-engine started`, добавленный job
-`maint_dispatch_partitions`, `listening for triggers`.
+🔍 **Проверка (для себя):**
+```bash
+# Все init/migrations завершились с кодом 0
+docker compose ps -a --format '{{.Name}}\t{{.Status}}' \
+  | grep -E '(init|migrations)' | grep -v 'Exited (0)' \
+  && echo "ВНИМАНИЕ: что-то упало" || echo "OK"
+
+# Движок поднялся: планировщик + слушатель + обслуживание партиций
+docker compose logs movies-alerting-engine | grep -E 'started|maint|listening'
+```
+Ожидаем в логах: `alerting-engine started`, job `maint_dispatch_partitions`,
+`listening for triggers`.
 
 ---
 
-## 2. Засеять демо-пользователей и события (терминал)
+## 2. Засеять демо-данные (терминал)
 
+🎬 Показать команды и их вывод.
 ```bash
-# 50 демо-юзеров в auth.users (is_demo=TRUE, заполнены gender/age/country/email)
+# 50 демо-юзеров в auth.users (is_demo=TRUE, с gender/age/country/email)
 docker compose --profile demo run --rm movies-demo-tools seed-users --count 50
 
-# Паттерн win-back: каждому 10–15 view-событий 30..8 дней назад, тишина 7 дней
+# Паттерн win-back: каждому 10–15 view-событий 30..8 дней назад, затем тишина 7 дней
 docker compose --profile demo run --rm movies-demo-tools \
   trigger-events --scenario winback --count 30
 ```
+> Если демо-образ давно не пересобирался — добавьте `--build` к `run`.
 
-> Если демо-образ давно не пересобирался — добавьте `--build` к команде `run`.
+🎬 **Показать в Kafka UI** (http://localhost:8080): топик `views` наполнился —
+видно рост сообщений. Это наглядно демонстрирует, что события идут через Kafka.
 
-**Проверка (StarRocks под `alert_reader`):** события долетели через Routine Load.
-```bash
-docker exec movies-starrocks mysql -uroot -P9030 -h127.0.0.1 -e \
-  "SELECT count(*) FROM ugc_analytics.user_events;"     # сотни событий
+🔍 **Проверка (для себя)** — события долетели в StarRocks через Routine Load.
+В DBeaver (`starrocks-reader`):
+```sql
+SELECT count(*) FROM ugc_analytics.user_events;   -- сотни событий
 ```
 
 ---
 
-## 3. Обновить витрины StarRocks (терминал, под `root`)
+## 3. Обновить витрины StarRocks (DBeaver: `starrocks-root`)
 
-В демо не ждём часовой `SUBMIT TASK` — синхронизируем измерения и витрины вручную
-(полный блок — в `alerting-service/examples.sql` §7). `dim_films`/`dim_genres`
-уже наполнены init-контейнером; обновляем `dim_users` (свежие демо-юзеры) и MV
-win-back.
+В демо не ждём часовой `SUBMIT TASK` — синхронизируем измерения и витрины вручную.
+StarRocks 4.0.8 не поддерживает `EXECUTE TASK <имя>`, поэтому повторяем тот же
+`INSERT OVERWRITE`, что и в `SUBMIT TASK`, + `REFRESH ... WITH SYNC MODE` (полный
+блок — `examples.sql` §7). `dim_films/dim_genres` уже наполнил init-контейнер;
+обновляем `dim_users` (свежие демо-юзеры) и win-back MV.
 
-```bash
-docker exec movies-starrocks mysql -uroot -P9030 -h127.0.0.1 ugc_analytics -e "
+🎬 Выполнить в подключении `starrocks-root`:
+```sql
+USE ugc_analytics;
+
 INSERT OVERWRITE dim_users
 SELECT CAST(u.id AS VARCHAR(36)), u.gender, u.age, u.country,
        concat_ws('_', coalesce(u.gender,'X'),
@@ -95,27 +118,38 @@ SELECT CAST(u.id AS VARCHAR(36)), u.gender, u.age, u.country,
            coalesce(u.country,'X')),
        u.created_at, u.is_demo
 FROM pg_catalog.auth.users u;
+
 REFRESH MATERIALIZED VIEW mv_user_activity   WITH SYNC MODE;
-REFRESH MATERIALIZED VIEW mv_user_top_genres WITH SYNC MODE;"
+REFRESH MATERIALIZED VIEW mv_user_top_genres WITH SYNC MODE;
 ```
 
-**Проверка:** сколько пользователей попадёт под правило win-back.
-```bash
-docker exec movies-starrocks mysql -uroot -P9030 -h127.0.0.1 -e "
+🔍 **Проверка (для себя)** — сколько юзеров попадёт под правило win-back:
+```sql
 SELECT count(*) FROM ugc_analytics.mv_user_activity a
 JOIN ugc_analytics.mv_user_top_genres t USING (user_id)
-WHERE a.was_active_last_month = TRUE AND a.last_watch_at < now() - INTERVAL 7 DAY;"
-# ~20
+WHERE a.was_active_last_month = TRUE AND a.last_watch_at < now() - INTERVAL 7 DAY;
+-- ~20
 ```
 
 ---
 
-## 4. Зарегистрировать правило (Postgres)
+## 4. Зарегистрировать правило (DBeaver: `movies-pg`)
 
-`alerting-service/examples.sql` §2. SQL правила обязан вернуть колонку `user_id`
-и опционально `context` (JSON). Здесь `context` несёт top-3 жанра пользователя —
-это и подставится в письмо (ФТ-2).
+🎬 Сначала показать, что выборка работает (подключение `starrocks-reader`):
+```sql
+USE ugc_analytics;
+SELECT user_id,
+       -- named_struct строит структуру ключ-значение, to_json делает из неё JSON-
+       -- строку: это и есть per-user context, который подставится в письмо
+       to_json(named_struct('top_genres', t.top_genres)) AS context
+FROM ugc_analytics.mv_user_activity a
+JOIN ugc_analytics.mv_user_top_genres t USING (user_id)
+WHERE a.was_active_last_month = TRUE
+  AND a.last_watch_at < now() - INTERVAL 7 DAY;
+```
 
+🎬 Теперь регистрируем правило (подключение `movies-pg`). SQL правила обязан вернуть
+`user_id` и опционально `context`; здесь `context` несёт top-3 жанра пользователя.
 ```sql
 SELECT alerting.adm_create_rule(
     p_code          := 'winback_active_user',
@@ -131,20 +165,39 @@ SELECT alerting.adm_create_rule(
     p_cron          := '0 9 * * *',
     p_template_code := 'winback_recommendation',
     p_channel       := 'email',
-    p_frequency_cap := '{"per_rule_per_user_days": 30, "per_user_per_day": 1}'::jsonb,
+    -- общий дневной потолок на пользователя — настройка движка
+    -- ALERTING_GLOBAL_PER_USER_PER_DAY (по умолчанию 3), а не поле правила
+    p_frequency_cap := '{"per_rule_per_user_days": 30}'::jsonb,
     p_max_users     := 50000
 );
 SELECT alerting.adm_enable_rule('winback_active_user');
 ```
 
-> **Валидация (ФТ-1, НФТ-2).** Покажите осмысленные ошибки:
-> `p_channel := 'telegram'` → `invalid_channel`; `p_cron := 'кривой'` → `invalid_cron`;
-> несуществующий `p_template_code` → `template_not_found_or_inactive`.
+🎬 **Показать валидацию** (ФТ-1, НФТ-2) — осмысленные ошибки на «кривых» входах:
+```sql
+-- канал не из списка
+SELECT alerting.adm_create_rule('x','x','SELECT user_id FROM t','0 9 * * *',
+        'winback_recommendation','telegram');            -- invalid_channel
+
+-- SQL не на чтение
+SELECT alerting.adm_create_rule('x','x','DELETE FROM t','0 9 * * *',
+        'winback_recommendation','email');               -- invalid_sql: must start with SELECT or WITH
+
+-- SQL без user_id
+SELECT alerting.adm_create_rule('x','x','SELECT 1 FROM t','0 9 * * *',
+        'winback_recommendation','email');               -- invalid_sql: must return column user_id
+
+-- устаревший ключ лимита
+SELECT alerting.adm_create_rule('x','x','SELECT user_id FROM t','0 9 * * *',
+        'winback_recommendation','email',
+        '{"per_user_per_day": 1}'::jsonb);                -- per_user_per_day is now a global engine setting
+```
 
 ---
 
 ## 5. Тестовый прогон — dry-run (ФТ-5)
 
+🎬 Подключение `movies-pg`:
 ```sql
 SELECT alerting.adm_dry_run_rule('winback_active_user');
 -- через 1–2 сек:
@@ -154,13 +207,15 @@ FROM alerting.v_runs ORDER BY started_at DESC LIMIT 1;
 Ожидаем: `status=success, matched_users=20, after_cap_users=20, dispatched_users=0, is_dry_run=t`.
 
 > Движок выполнил SQL в StarRocks, посчитал аудиторию **до и после лимита**, но
-> `adm_create_task` НЕ позвал — писем нет. `is_dry_run=t` отличает тестовый
-> прогон в журнале от боевого.
+> `adm_create_task` НЕ вызвал — писем нет. `is_dry_run=t` отличает тестовый прогон.
+> Dry-run заодно служит реальной проверкой SQL: если запрос не исполним в StarRocks,
+> запуск уйдёт в `failed` с текстом ошибки в `v_runs.error`.
 
 ---
 
-## 6. Боевой запуск (ФТ-6, ФТ-7) и per-user контекст (ФТ-2)
+## 6. Боевой запуск (ФТ-6/7) и per-user контекст (ФТ-2)
 
+🎬 Подключение `movies-pg`:
 ```sql
 SELECT alerting.adm_trigger_rule('winback_active_user');
 -- через 2–3 сек:
@@ -170,33 +225,29 @@ FROM alerting.v_runs WHERE is_dry_run=FALSE ORDER BY started_at DESC LIMIT 1;
 ```
 Ожидаем: `success, 20, 20, 20, has_task=t`.
 
-**Письма дошли — браузер, Mailpit http://localhost:8025.** В инбоксе 20 писем
-с темой «<Имя>, мы соскучились!». Откройте 2–3 письма: строка с жанрами **у
-каждого своя** — реальные top-3 пользователя из его `context` (ФТ-2), а не дефолт
-шаблона. Проверка из терминала по отрендеренным телам:
+🎬 **Показать письма в Mailpit** (http://localhost:8025): 20 писем с темой
+«<Имя>, мы соскучились!». Открыть 2–3 письма — строка с жанрами **у каждого своя**:
+реальные top-3 пользователя из его `context` (ФТ-2), а не дефолт шаблона.
 
-```bash
-docker exec movies-db psql -U postgres -d movies -tAc "
-SELECT recipient_address, (regexp_match(body,'любимых жанров:\s*(.+)'))[1]
+🔍 **Проверка (для себя)** — отрендеренные тела (DBeaver `movies-pg`):
+```sql
+SELECT recipient_address, (regexp_match(body,'любимых жанров:\s*(.+)'))[1] AS genres
 FROM notifications.t_messages
 WHERE task_id=(SELECT id FROM notifications.t_tasks ORDER BY created_at DESC LIMIT 1)
-ORDER BY recipient_address LIMIT 3;"
+ORDER BY recipient_address LIMIT 5;
 ```
-Пример: у одного `Sci-Fi, Action, Comedy`, у другого `Music, Drama, Sci-Fi` — у
-каждого свои.
 
-> **Как это работает.** Движок одной **атомарной транзакцией** Postgres пишет
-> `t_dispatch_history`, кладёт per-user контекст в `audience.params_by_user` и
+> Как работает per-user контекст: движок одной **атомарной транзакцией** Postgres
+> пишет `t_dispatch_history`, кладёт per-user контекст в `audience.params_by_user` и
 > зовёт `notifications.adm_create_task`. Scheduler notifications мерджит
-> `params_by_user[user_id]` поверх общих `params` при рендере Jinja. Схемы
-> `alerting` и `notifications` в одной БД — поэтому всё в одной транзакции.
+> `params_by_user[user_id]` поверх общих `params` при рендере Jinja. Схемы `alerting`
+> и `notifications` в одной БД — поэтому всё в одной транзакции.
 
 ---
 
 ## 7. Лимит уведомлений — frequency cap (ФТ-3)
 
-Запустим правило ещё раз сразу:
-
+🎬 Запустим правило ещё раз сразу (подключение `movies-pg`):
 ```sql
 SELECT alerting.adm_trigger_rule('winback_active_user');
 -- через 2–3 сек:
@@ -205,117 +256,162 @@ FROM alerting.v_runs WHERE is_dry_run=FALSE ORDER BY started_at DESC LIMIT 2;
 ```
 Ожидаем у **нового** запуска: `matched_users=20, after_cap_users=0, dispatched_users=0`.
 
-> Все 20 пользователей получили это правило только что → сработал
-> `per_rule_per_user_days=30` (не чаще раза в 30 дней). Второй уровень,
-> `per_user_per_day=1` — общий потолок писем на пользователя в сутки по всем
-> правилам. Новых строк в `t_dispatch_history` нет, второго письма никто не получил.
+> Все 20 получили это правило только что -> сработал уровень `per_rule_per_user_days=30`
+> (не чаще раза в 30 дней по этому правилу). Второй уровень — общий потолок на
+> пользователя в сутки по ВСЕМ правилам — это **глобальная настройка движка**
+> `ALERTING_GLOBAL_PER_USER_PER_DAY` (по умолчанию 3), а не поле правила. Новых строк
+> в `t_dispatch_history` нет, второго письма никто не получил.
+
+🎬 В Mailpit новых писем не появилось — наглядно.
 
 ---
 
 ## 8. История доставки и партиции (ФТ-8)
 
+🎬 Подключение `movies-pg`:
 ```sql
--- Журнал отправок для аудита/разбора жалоб
+-- Журнал отправок (для аудита/разбора жалоб)
 SELECT rule_code, user_id, channel, sent_at FROM alerting.v_dispatch
 ORDER BY sent_at DESC LIMIT 5;
 
--- Строки лежат в недельной партиции (PARTITION BY RANGE sent_at)
+-- Строки лежат в недельной партиции
 SELECT tableoid::regclass AS partition, count(*)
 FROM alerting.t_dispatch_history GROUP BY 1;
-```
 
-Список партиций и обслуживание (под `postgres`):
-```sql
--- партиции этой и следующей недели нарезаны автоматически
+-- Список нарезанных партиций (этой и следующей недели)
 SELECT c.relname FROM pg_inherits i
 JOIN pg_class c ON c.oid=i.inhrelid
 JOIN pg_class p ON p.oid=i.inhparent
 WHERE p.relname='t_dispatch_history' ORDER BY 1;
-
--- обслуживание: создать недельные партиции + дропнуть старше retention.
--- Движок зовёт это при старте и раз в сутки (ALERTING_DISPATCH_RETENTION_DAYS).
-SELECT alerting.maint_dispatch_partitions(90);
 ```
 
-> Демонстрация retention: создайте «старую» партицию и вызовите обслуживание —
-> она удалится (партиции старше 90 дней не нужны: лимиту хватает 30 дней, аудиту — 90).
-> ```sql
-> CREATE TABLE alerting.t_dispatch_history_p20260105
->   PARTITION OF alerting.t_dispatch_history FOR VALUES FROM ('2026-01-05') TO ('2026-01-12');
-> SELECT alerting.maint_dispatch_partitions(90);   -- p20260105 пропадёт
-> ```
+### Где задаётся «нарезать по неделям» и как обслуживается
+
+> **Это партиционирование на стороне Postgres** (таблица `t_dispatch_history`), не
+> StarRocks. В StarRocks `user_events` партиций нет (PK + HASH-раздача).
+
+- **Где «по неделям»:** в миграции `alembic/versions/0001_initial.py` таблица
+  создаётся как `... PARTITION BY RANGE (sent_at)` (raw DDL — `op.create_table` не
+  умеет PARTITION BY).
+- **Кто нарезает партиции:** функция `alerting.maint_dispatch_partitions(N)`
+  (`sql/functions/007_maint_dispatch_partitions.sql`): гарантирует партиции на
+  текущую и следующую неделю (`date_trunc('week', now())`, шаг 7 дней; имя
+  `t_dispatch_history_pYYYYMMDD` по понедельнику ISO-недели) и дропает партиции
+  старше `now - retention`.
+- **Когда вызывается:** движок зовёт её при старте и затем по cron `5 0 * * *`
+  (раз в сутки), retention из `ALERTING_DISPATCH_RETENTION_DAYS` (90 дней). Первая
+  нарезка — прямо в миграции (`SELECT alerting.maint_dispatch_partitions(90)`).
+
+🎬 (Опционально) показать retention в действии: создать «старую» партицию и вызвать
+обслуживание — она удалится (подключение `movies-pg`):
+```sql
+CREATE TABLE alerting.t_dispatch_history_p20260105
+  PARTITION OF alerting.t_dispatch_history FOR VALUES FROM ('2026-01-05') TO ('2026-01-12');
+SELECT alerting.maint_dispatch_partitions(90);   -- p20260105 пропадёт (конец недели старше 90 дней)
+```
 
 ---
 
-## 9. Восстановление после сбоя (НФТ-3)
+## 9. Восстановление после сбоя (НФТ-3) — рассказать, не показывать вживую
 
-Симулируем падение движка между «пометили запуск running» и «создали задачу»:
-вставим запуск со статусом `running` и прошедшим `started_at`, затем перезапустим
-движок — он должен **дозавершить** запуск без дублей.
+В видео достаточно объяснить словами + показать места в коде; живой рестарт не
+демонстрируем.
 
+**Как обеспечивается.** Срабатывание идёт в три фазы (`src/services/executor.py`,
+`execute_rule`): (1) пометить запуск `running` отдельным коммитом; (2) выборка из
+StarRocks; (3) **одной транзакцией** — cap, запись `t_dispatch_history`,
+`notifications.adm_create_task`, финализация запуска. Пока статус `running`, по
+запуску ничего не закоммичено. При старте движок (`_recover_interrupted_runs` в
+`src/workers/engine.py`) берёт `running`-запуски старше `recovery_grace_sec` и
+повторяет `execute_rule` с тем же `run_id` — атомарность фазы 3 гарантирует
+отсутствие дублей. Вторая страховка — идемпотентный ключ `alerting:{rule_id}:{run_id}`
+в `adm_create_task`: даже двойное восстановление вернёт ту же задачу, без второго
+письма. Dry-run-запуски recovery не трогает (`t_runs.is_dry_run`).
+
+🔍 **Самопроверка (для себя, не на видео)** — сымитировать прерванный запуск:
 ```sql
--- чистим историю, чтобы recovery было видно по факту рассылки (иначе бы сработал cap)
-DELETE FROM alerting.t_dispatch_history;
-
--- «прерванный» запуск (started_at старше recovery-grace = 300 c)
+-- подключение movies-pg
+DELETE FROM alerting.t_dispatch_history;   -- чтобы recovery было видно по факту рассылки
 INSERT INTO alerting.t_runs(rule_id, status, started_at, is_dry_run)
 SELECT id, 'running', (now() AT TIME ZONE 'utc') - interval '10 minutes', FALSE
-FROM alerting.t_rules WHERE code='winback_active_user'
-RETURNING id;     -- запомните run_id
+FROM alerting.t_rules WHERE code='winback_active_user' RETURNING id;   -- запомнить run_id
 ```
-
 ```bash
-docker restart movies-alerting-engine
-sleep 8
-docker compose logs movies-alerting-engine | grep recover   # "recovering interrupted run"
+docker restart movies-alerting-engine          # в логах: "recovering interrupted run"
 ```
-
 ```sql
--- тот же run_id: running → success, dispatched=20
-SELECT status, matched_users, dispatched_users FROM alerting.t_runs WHERE id = '<run_id>';
-SELECT count(*) FROM alerting.t_dispatch_history;            -- снова 20
+SELECT status, dispatched_users FROM alerting.t_runs WHERE id='<run_id>';  -- success, 20
+SELECT count(*) FROM alerting.t_dispatch_history;                          -- снова 20, без дублей
 ```
-
-> Атомарность фазы рассылки гарантирует: статус `running` ⟺ ничего не
-> закоммичено, поэтому повтор с тем же `run_id` безопасен. Идемпотентный ключ
-> `alerting:{rule_id}:{run_id}` в `adm_create_task` — вторая страховка: даже
-> двойное восстановление не даст второго письма.
 
 ---
 
-## 10. Дополнительные сценарии
+## 10. BI поверх витрин — Superset (браузер, http://localhost:8088)
 
-Тот же конвейер, другие витрины/правила (полные SQL — `alerting-service/examples.sql`,
+Здесь важно: `SELECT ... FROM mv_*` в **SQL Lab** даёт только табличную выдачу
+(сетку строк) — это ещё не чарт. Чтобы получить график, из результата SQL Lab
+создаётся **Chart**. Ниже — как именно.
+
+🎬 **Шаг 1. SQL Lab -> запрос.** Войти `admin`/`admin` -> меню **SQL** -> **SQL Lab**.
+Database: `starrocks_analytics`, schema: `ugc_analytics`. Выполнить:
+```sql
+SELECT bucket_hour,
+       sum(views)          AS total_views,
+       sum(unique_viewers) AS total_unique_viewers
+FROM ugc_analytics.mv_film_watch_hourly
+WHERE bucket_hour > now() - INTERVAL 7 DAY
+GROUP BY bucket_hour
+ORDER BY bucket_hour;
+```
+Появится таблица результата (часовые агрегаты).
+
+🎬 **Шаг 2. Из результата -> график.** Нажать кнопку **CREATE CHART** (над/под
+результатом SQL Lab). Откроется экран **Explore**:
+- **Chart type:** `Line Chart` (или `Bar Chart`);
+- **X-axis / TIME:** `bucket_hour`;
+- **Metrics:** `total_views` (и `total_unique_viewers`);
+- нажать **CREATE CHART / RUN** — построится линия активности по часам.
+- **SAVE** -> дать имя, при желании добавить на Dashboard.
+
+🎬 **Ещё два чарта** (готовые SQL — `superset/README.md`): тренд по сегментам
+(`mv_segment_film_activity`, Bar) и выходные vs будни (`dim_date`, Pie). Тем же
+способом: SQL Lab -> CREATE CHART -> выбрать тип визуализации.
+
+> Альтернатива SQL Lab: **Data -> Datasets -> + Dataset**, выбрать
+> `ugc_analytics.mv_*` как датасет, затем **Charts -> + Chart** поверх него — так
+> чарт переиспользует витрину напрямую, без ручного SQL.
+
+🎬 Что показать на видео: что Superset читает **те же materialized views** StarRocks
+под ролью `alert_reader` — единый аналитический слой и для правил, и для BI.
+
+---
+
+## 11. (Опционально) другие сценарии и замыкание петли
+
+Тот же конвейер, другие витрины/правила (полные SQL — `examples.sql`,
 бизнес-истории — `diploma_tz.md` §10):
-
 ```bash
-# Тренд в сегменте: всплеск просмотров фильма X сегментом women_25-34
+# Тренд в сегменте: всплеск просмотров фильма сегментом female_25-34_RU
 docker compose --profile demo run --rm movies-demo-tools \
   trigger-events --scenario segment_trend --segment female_25-34_RU --count 30
 # Выходной всплеск: события только в субботу-воскресенье прошлой недели
 docker compose --profile demo run --rm movies-demo-tools \
   trigger-events --scenario weekend_burst --count 30
 ```
-После каждого — refresh соответствующих MV (`mv_segment_film_activity` /
-`mv_weekend_film_activity`, см. §3) и регистрация правила из `examples.sql`.
+После каждого — refresh соответствующих MV (см. §3) и регистрация правила.
 
----
-
-## 11. BI поверх витрин (браузер, Superset http://localhost:8088)
-
-Войти `admin`/`admin` → **SQL Lab** → датасорс StarRocks → выполнить:
-```sql
-SELECT * FROM ugc_analytics.mv_user_activity LIMIT 50;
-```
-Superset читает те же Materialized views по MySQL-протоколу (датасорс
-`starrocks+pymysql://alert_reader@movies-starrocks:9030/default_catalog.ugc_analytics`).
+**Замыкание петли (ROI правила):** реакция пользователя на письмо
+(`POST /ugc/api/v1/events/recommendation`) возвращается событием в `user_events`,
+и в Superset считается конверсия правила
+(`WHERE event_type='recommendation' AND rule_code=...`).
 
 ---
 
 ## Сброс перед повторным показом
 
 ```sql
+-- подключение movies-pg
 SELECT alerting.adm_delete_rule('winback_active_user');   -- мягкое удаление
 ```
 Mailpit чистится кнопкой «Delete all». `seed-users`/`trigger-events` идемпотентны —
-можно прогнать §2–§9 заново. Полный сброс — `docker compose down -v && up --build`.
+§2–§9 можно прогнать заново. Полный сброс — `docker compose down -v && up --build`.

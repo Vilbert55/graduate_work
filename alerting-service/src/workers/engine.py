@@ -140,8 +140,14 @@ async def _listen_for_triggers(stop_event: asyncio.Event) -> None:
 
     # Колбэк asyncpg вызывается прямо в event-loop, поэтому сразу запускаем
     # обработку пейлоада отдельной задачей и не блокируем приём уведомлений.
+    # Ссылку на задачу держим в set до её завершения: иначе сборщик мусора может
+    # убрать задачу раньше времени (asyncio хранит на неё только слабую ссылку).
+    background_tasks: set[asyncio.Task] = set()
+
     def _on_notify(_conn, _pid, _channel, payload):
-        asyncio.create_task(_handle_trigger_payload(payload))  # noqa: RUF006
+        task = asyncio.create_task(_handle_trigger_payload(payload))
+        background_tasks.add(task)
+        task.add_done_callback(background_tasks.discard)
 
     # Внешний цикл = живучесть: если соединение оборвётся, переподключаемся.
     while not stop_event.is_set():
@@ -164,7 +170,7 @@ async def _listen_for_triggers(stop_event: asyncio.Event) -> None:
 
 
 async def _maintain_partitions() -> None:
-    """Нарезать недельные партиции t_dispatch_history и подчистить старые (ФТ-8)."""
+    """Нарезать недельные партиции t_dispatch_history и удалить устаревшие."""
     async with async_session_maker() as session:
         await session.execute(
             text("SELECT alerting.maint_dispatch_partitions(:days)"),
@@ -174,12 +180,13 @@ async def _maintain_partitions() -> None:
 
 
 async def _recover_interrupted_runs() -> None:
-    """Дозавершить запуски, прерванные сбоем движка (НФТ-3).
+    """Дозавершить запуски, прерванные сбоем движка.
 
     Берём t_runs со статусом 'running' старше recovery_grace_sec (dry-run
-    исключаем — у него нет рассылки, которую можно «потерять») и повторяем
-    execute_rule с тем же run_id. Атомарность фазы dispatch гарантирует, что
-    повтор не создаст дублей: 'running' ⟺ ничего не закоммичено.
+    исключаем — у него нет рассылки, которую можно потерять) и повторяем
+    execute_rule с тем же run_id. Атомарность фазы рассылки гарантирует, что
+    повтор не создаст дублей: пока статус 'running', по запуску ничего не
+    закоммичено.
     """
     async with async_session_maker() as session:
         rows = (await session.execute(
@@ -223,7 +230,7 @@ async def run() -> None:
         replace_existing=True,
     )
 
-    # Восстановление прерванных сбоем запусков (НФТ-3) — до планирования правил.
+    # Дозавершить прерванные сбоем запуски — до того, как начнём планировать правила.
     await _recover_interrupted_runs()
 
     # Первичная загрузка правил из БД в планировщик.

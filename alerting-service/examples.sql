@@ -10,6 +10,8 @@
 
 -- USE ugc_analytics;
 -- SELECT user_id,
+--        -- named_struct строит структуру ключ-значение, to_json делает из неё
+--        -- JSON-строку: это и есть per-user context, который уйдёт в письмо.
 --        to_json(named_struct('top_genres', t.top_genres)) AS context
 -- FROM ugc_analytics.mv_user_activity a
 -- JOIN ugc_analytics.mv_user_top_genres t USING (user_id)
@@ -33,7 +35,8 @@ SELECT alerting.adm_create_rule(
     p_cron          := '0 9 * * *',                      -- каждое утро в 9:00 UTC
     p_template_code := 'winback_recommendation',
     p_channel       := 'email',
-    p_frequency_cap := '{"per_rule_per_user_days": 30, "per_user_per_day": 1}'::jsonb,
+    -- общий дневной потолок на пользователя — настройка движка ALERTING_GLOBAL_PER_USER_PER_DAY
+    p_frequency_cap := '{"per_rule_per_user_days": 30}'::jsonb,
     p_max_users     := 50000
 );
 
@@ -44,12 +47,13 @@ SELECT alerting.adm_create_rule(
 -- Все adm_*-функции адресуют правило по его code (тот же, что в adm_create_rule),
 -- искать uuid вручную не нужно.
 SELECT alerting.adm_dry_run_rule('winback_active_user') AS run_id;
-\gset
 
--- Подождать 1-2 секунды, потом посмотреть:
+-- Подождать 1-2 секунды, потом посмотреть последний запуск этого правила:
 SELECT status, matched_users, after_cap_users, error
 FROM alerting.v_runs
-WHERE run_id = :'run_id';
+WHERE rule_code = 'winback_active_user'
+ORDER BY started_at DESC
+LIMIT 1;
 
 -- ============================================================
 -- 4. Включаем / выключаем / удаляем правило.

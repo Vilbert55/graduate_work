@@ -63,7 +63,7 @@ Mindbox, Sendsay, RetentionRocket (Россия), Customer.io, Braze, Klaviyo, B
 |---|---|
 | ФТ-1  | Аналитик создаёт правило одной SQL-функцией `alerting.adm_create_rule(...)`. Параметры — текст SQL-запроса, расписание, шаблон уведомления, канал доставки, лимиты. Все параметры валидируются. |
 | ФТ-2  | SQL правила обязан возвращать колонку `user_id` и опционально `context` (JSON с данными для подстановки в шаблон). |
-| ФТ-3  | Двухуровневый лимит уведомлений: минимальный интервал между сообщениями от одного правила одному пользователю + общий потолок сообщений на пользователя в сутки. |
+| ФТ-3  | Двухуровневый лимит уведомлений: минимальный интервал между сообщениями от одного правила одному пользователю (per-rule) + общий потолок сообщений на пользователя в сутки по всем правилам (единая настройка движка). |
 | ФТ-4  | Управление правилом: обновление, включение/выключение, мягкое удаление. |
 | ФТ-5  | Тестовый прогон правила — выполнить SQL без рассылки и вернуть размер аудитории до и после применения лимита, плюс несколько `user_id` для проверки. |
 | ФТ-6  | Ручной запуск правила вне расписания. |
@@ -202,6 +202,8 @@ Mindbox, Sendsay, RetentionRocket (Россия), Customer.io, Braze, Klaviyo, B
 -- 1. Тестируем выборку в StarRocks (DBeaver)
 SELECT
     a.user_id,
+    -- named_struct строит структуру ключ-значение, to_json делает из неё JSON-строку:
+    -- это и есть per-user context, который подставится в письмо
     to_json(named_struct('top_genres', t.top_genres)) AS context
 FROM ugc_analytics.mv_user_activity a
 JOIN ugc_analytics.mv_user_top_genres t USING (user_id)
@@ -215,7 +217,7 @@ SELECT alerting.adm_create_rule(
     p_cron := '0 9 * * *',
     p_template_code := 'winback_recommendation',
     p_channel := 'email',
-    p_frequency_cap := '{"per_rule_per_user_days": 30, "per_user_per_day": 1}'::jsonb
+    p_frequency_cap := '{"per_rule_per_user_days": 30}'::jsonb  -- общий дневной потолок — настройка движка ALERTING_GLOBAL_PER_USER_PER_DAY
 );
 
 -- 3. Dry-run -> 4. Enable -> 5. Опционально trigger -> 6. Мониторинг через v_runs / v_dispatch
@@ -241,7 +243,7 @@ CREATE TABLE alerting.t_rules (
     cron_expression   TEXT NOT NULL,
     template_code     TEXT NOT NULL,         -- ссылка на notifications.t_templates.code
     channel           TEXT NOT NULL,         -- email | ws
-    frequency_cap     JSONB NOT NULL DEFAULT '{}',
+    frequency_cap     JSONB NOT NULL DEFAULT '{}',   -- {"per_rule_per_user_days": N}; общий дневной потолок — настройка движка
     max_users         INTEGER NOT NULL DEFAULT 50000,
     is_enabled        BOOLEAN NOT NULL DEFAULT FALSE,
     is_deleted        BOOLEAN NOT NULL DEFAULT FALSE,
@@ -348,7 +350,7 @@ CREATE INDEX ON alerting.t_dispatch_history (rule_id, user_id, sent_at DESC);
 
 **Cron:** `0 9 * * *` (каждое утро в 9:00 UTC).
 
-**Cap:** не чаще 1 раза в 30 дней по этому правилу, плюс глобальный потолок 1 письмо/день.
+**Cap:** не чаще 1 раза в 30 дней по этому правилу (`per_rule_per_user_days=30`); общий дневной потолок на пользователя — глобальная настройка движка `ALERTING_GLOBAL_PER_USER_PER_DAY` (по умолчанию 3 письма/сутки по всем правилам).
 
 **Демо-триггер.** Перед демо `demo-seeder` создаёт N демо-юзеров. `event-trigger` для каждого из них льёт серию `view`-событий с `client_time` в диапазоне «30…8 дней назад» (создаёт паттерн «был активен») и затем тишину последние 7+ дней. Дополнительно льёт несколько событий с известными `film_id` определённых жанров, чтобы `mv_user_top_genres` дал предсказуемый результат. После часового refresh dims/MV (или ручного `INSERT OVERWRITE` + `REFRESH MATERIALIZED VIEW ... WITH SYNC MODE`, см. `examples.sql` §7) — тик engine, письма в Mailpit.
 
@@ -380,7 +382,7 @@ WHERE a.user_id IS NULL
 
 **Cron:** `0 */6 * * *`.
 
-**Cap:** не чаще 1 раза в 7 дней; глобальный потолок 3 письма/день.
+**Cap:** не чаще 1 раза в 7 дней по этому правилу (`per_rule_per_user_days=7`); общий дневной потолок — та же глобальная настройка движка `ALERTING_GLOBAL_PER_USER_PER_DAY`.
 
 **Демо-триггер.** Перед демо `demo-seeder` создаёт пользователей целевого сегмента (`women_25_34`). `event-trigger` выбирает фильм X из существующих фикстур (по фильтру жанра/рейтинга) и генерирует всплеск просмотров этого фильма от пользователей. После часового refresh dim-таблиц и MV — тик правила, письма пользователям сегмента, которые X ещё не смотрели.
 
@@ -425,7 +427,7 @@ HAVING count(*) >= 3
 | R5 | Сбой движка между выполнением SQL и созданием задачи -> потенциальный дубль | Идемпотентный ключ `alerting:{rule_id}:{run_id}` в `notifications.adm_create_task`. |
 | R6 | Один экземпляр движка - точка отказа | Осознанный компромисс MVP: автоперезапуск контейнера + восстановление прерванных запусков. |
 | R7 | Неоптимальный SQL аналитика подвешивает StarRocks | Тайм-аут запроса 30 секунд на уровне сессии, опционально — `EXPLAIN` при первой регистрации правила. |
-| R8 | Перекрытие правил - пользователь получает слишком много | Общий потолок «сообщений на пользователя в сутки». |
+| R8 | Перекрытие правил - пользователь получает слишком много | Общий потолок «сообщений на пользователя в сутки» — единая настройка движка `ALERTING_GLOBAL_PER_USER_PER_DAY` (одна на все правила). |
 
 
 

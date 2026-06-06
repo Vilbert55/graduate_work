@@ -117,7 +117,7 @@ def upgrade() -> None:
 
     # ------------------------------------------------------------------
     # t_dispatch_history — история доставки (для frequency cap и аудита).
-    # Партиционирование по неделям (RANGE sent_at) — ФТ-8. op.create_table не
+    # Партиционирование по неделям (RANGE sent_at). op.create_table не
     # умеет PARTITION BY, поэтому raw DDL. Сами недельные партиции нарезает
     # alerting.maint_dispatch_partitions (первичный вызов — ниже, далее раз в
     # сутки движком; retention из ALERTING_DISPATCH_RETENTION_DAYS).
@@ -145,7 +145,7 @@ def upgrade() -> None:
 
     # ------------------------------------------------------------------
     # SQL-объекты: роли, представления, функции, сидинг.
-    # Порядок важен: roles → views (зависят от таблиц) → functions → seed.
+    # Порядок важен: roles -> views (зависят от таблиц) -> functions -> seed.
     # ------------------------------------------------------------------
     _load_sql_dir("roles")
     _load_sql_dir("views")
@@ -175,6 +175,8 @@ def downgrade() -> None:
     op.execute("DROP FUNCTION IF EXISTS alerting.maint_dispatch_partitions(INTEGER)")
     op.execute("DROP FUNCTION IF EXISTS alerting._rule_id(TEXT)")
     op.execute("DROP FUNCTION IF EXISTS alerting._enqueue_rule_run(UUID, TEXT)")
+    op.execute("DROP FUNCTION IF EXISTS alerting._check_frequency_cap(JSONB)")
+    op.execute("DROP FUNCTION IF EXISTS alerting._check_rule_sql(TEXT)")
     op.execute("DROP FUNCTION IF EXISTS alerting._check_cron(TEXT)")
     op.execute("DROP FUNCTION IF EXISTS alerting._check_channel(TEXT)")
 

@@ -87,7 +87,8 @@ https://github.com/Vilbert55/notifications_sprint_1
 ├── es_schema_movies.json       # Схема индекса фильмов для Elasticsearch
 ├── diploma_tz.md               # Дипломное ТЗ (расширенное)
 ├── diploma_tz_short.md         # Дипломное ТЗ (короткое)
-├── diploma_week2_notes.md      # Аналитическая записка по неделе 2
+├── cheatsheet.md               # (дипломный) личная шпаргалка: как всё устроено end-to-end
+├── demo.md                     # (дипломный) сценарий демонстрации (запись видео)
 ├── .github                     # Workflow Github Actions
 └── README.md                   # Этот файл
 ```
