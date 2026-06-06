@@ -131,5 +131,5 @@ jobs:
             Репозиторий: `${{ github.repository }}`
             Ветка: `${{ github.ref_name }}`
             Коммит: `${{ github.sha }}`
-            Сообщение: ${{ github.event.head_commit.message }}
+            Сообщение: `${{ github.event.head_commit.message }}`
           format: markdown
