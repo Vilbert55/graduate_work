@@ -47,7 +47,7 @@ seed-users -> trigger-events -> Kafka -> Routine Load -> user_events
 |---|---|---|
 | Mailpit (приёмник писем) | http://localhost:8025 | — |
 | Superset (BI) | http://localhost:8088 | `admin` / `admin` |
-| Kafka UI | http://localhost:8080 | — |
+| Kafka UI | http://localhost:8081 | — |
 | RabbitMQ | http://localhost:15672 | `guest` / `guest` |
 
 ---
@@ -87,7 +87,7 @@ docker compose --profile demo run --rm movies-demo-tools \
 ```
 > Если демо-образ давно не пересобирался — добавьте `--build` к `run`.
 
-🎬 **Показать в Kafka UI** (http://localhost:8080): топик `views` наполнился —
+🎬 **Показать в Kafka UI** (http://localhost:8081): топик `views` наполнился —
 видно рост сообщений. Это наглядно демонстрирует, что события идут через Kafka.
 
 🔍 **Проверка (для себя)** — события долетели в StarRocks через Routine Load.
@@ -430,7 +430,7 @@ FROM ugc_analytics.mv_rule_conversion WHERE rule_code='winback_active_user';
 
 > Если в Mailpit ссылка не кликается — скопировать её в адресную строку браузера.
 
-🎬 **Показать в Kafka UI** (http://localhost:8080): топик `recommendations`
+🎬 **Показать в Kafka UI** (http://localhost:8081): топик `recommendations`
 наполнился ровно на число кликов — переходы реально прошли через шину.
 
 🔍 **Проверка (для себя)** — переходы долетели в StarRocks (`starrocks-reader`):

@@ -313,7 +313,7 @@ WHERE event_type = 'view'
   AND client_time > date_sub(now(), INTERVAL 30 DAY)
 GROUP BY user_id;
 
--- 5.2 mv_user_top_genres — компаньон win-back: top-3 жанра пользователя.
+-- 5.2 mv_user_top_genres - для сценария win-back: top-3 жанра пользователя.
 CREATE MATERIALIZED VIEW IF NOT EXISTS mv_user_top_genres
 DISTRIBUTED BY HASH(user_id) BUCKETS 4
 REFRESH ASYNC

@@ -52,7 +52,7 @@ https://github.com/Vilbert55/notifications_sprint_1
 | Swagger (Auth)      | http://localhost/auth/docs                      | Документация auth‑сервиса          |
 | UGC API             | http://localhost/ugc/api/v1/                    | Сбор пользовательских событий      |
 | Swagger (UGC)       | http://localhost/ugc/docs                       | Документация UGC API               |
-| Kafka UI            | http://localhost:8080                           | Веб-интерфейс Kafka                |
+| Kafka UI            | http://localhost:8081                           | Веб-интерфейс Kafka                |
 | Elasticsearch       | http://localhost:9200/                          | Прямой доступ к ES                 |
 | Kibana              | http://localhost:5601                           | Визуализация логов (ELK)           |
 | Glitchtip (Sentry)  | http://localhost:9000                           | Веб-интерфейс мониторинга ошибок   |
