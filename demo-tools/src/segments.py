@@ -12,6 +12,7 @@
 """
 from __future__ import annotations
 
+
 # Полоса -> (нижняя, верхняя) граница включительно.
 AGE_BANDS: dict[str, tuple[int, int]] = {
     "18-24": (18, 24),

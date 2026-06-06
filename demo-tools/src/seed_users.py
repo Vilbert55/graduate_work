@@ -22,7 +22,7 @@ from src.segments import AGE_BANDS, band_range
 
 # Все демо-юзеры создаются с одним фиксированным паролем: это тестовые
 # аккаунты, единый пароль упрощает демо (вход в Postman на шаге 9.1).
-DEMO_PASSWORD = "demo_password"
+DEMO_PASSWORD = "demo_password"  # noqa: S105
 
 # Сегменты для распределения
 DEFAULT_SEGMENTS = list(product(
@@ -72,7 +72,9 @@ async def _seed(count: int, segment_filter: str | None) -> int:
         # очистится TRUNCATE-аналогом — здесь DELETE покрывает оба случая).
         await conn.execute("DELETE FROM auth.refresh_tokens WHERE user_id IN (SELECT id FROM auth.users WHERE is_demo)")
         await conn.execute("DELETE FROM auth.user_roles    WHERE user_id IN (SELECT id FROM auth.users WHERE is_demo)")
-        await conn.execute("DELETE FROM auth.user_oauth_providers WHERE user_id IN (SELECT id FROM auth.users WHERE is_demo)")
+        await conn.execute(
+            "DELETE FROM auth.user_oauth_providers WHERE user_id IN (SELECT id FROM auth.users WHERE is_demo)",
+        )
         await conn.execute("DELETE FROM auth.users WHERE is_demo")
 
         rows = []
