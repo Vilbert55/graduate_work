@@ -70,7 +70,7 @@ Mindbox, Sendsay, RetentionRocket (Россия), Customer.io, Braze, Klaviyo, B
 | ФТ-7  | Движок по расписанию каждого активного правила выполняет его SQL в StarRocks, применяет лимит уведомлений и создаёт одну задачу в `notifications-service`. Каждое срабатывание идемпотентно: повтор после сбоя не создаёт дублей. |
 | ФТ-8  | Представления для аудита: список правил со статусом, история срабатываний, история отправок (для разбора жалоб). |
 | ФТ-9  | Materialized views в StarRocks — по одному на каждый ключевой сценарий плюс один общий. Обновляются StarRocks автоматически. |
-| ФТ-10 | Таблицы измерений (`dim_films`, `dim_users`, `dim_genres`) синхронизируются раз в час из Postgres в StarRocks средствами самого StarRocks. Отдельного ETL-сервиса не требуется. |
+| ФТ-10 | Таблицы измерений (`dim_films`, `dim_users`, `dim_genres`, `dim_date`) синхронизируются раз в час из Postgres в StarRocks средствами самого StarRocks. Отдельного ETL-сервиса не требуется. |
 | ФТ-11 | BI-дашборды (2–3 чарта) поверх Materialized views в Apache Superset. |
 | ФТ-12 | `notifications-service` не модифицируется — используются только его публичные SQL-функции (`adm_create_task`, `adm_upsert_template`). |
 
@@ -109,7 +109,7 @@ Mindbox, Sendsay, RetentionRocket (Россия), Customer.io, Braze, Klaviyo, B
 | Компонент | Роль |
 |---|---|
 | `movies-alerting-migrations` | Init-контейнер: миграции схемы `alerting` в Postgres + создание SQL-функций, представлений, ролей. |
-| `movies-starrocks-dims-init` | Init-контейнер: создаёт `dim_films`, `dim_users`, `dim_genres` и Materialized views, регистрирует JDBC Catalog на Postgres и запускает `SUBMIT TASK` для часовой синхронизации измерений. |
+| `movies-starrocks-dims-init` | Init-контейнер: создаёт `dim_*`-таблицы, журнал отправок `dispatch_log` и Materialized views, регистрирует JDBC Catalog на Postgres и запускает `SUBMIT TASK` для часовой синхронизации измерений. |
 | `movies-alerting-engine` | Основной воркер: планировщик APScheduler, выполнение SQL-правил, проверка лимита уведомлений, создание задач в `notifications-service`, восстановление после сбоя. Отдельного HTTP-API нет — управление через SQL. |
 | `movies-superset` | Apache Superset с готовой конфигурацией подключения к StarRocks. |
 | `movies-superset-init` | Init-контейнер: загружает 2–3 готовых дашборда поверх Materialized views. |
@@ -118,22 +118,24 @@ Mindbox, Sendsay, RetentionRocket (Россия), Customer.io, Braze, Klaviyo, B
 
 **Приём пользовательских событий (уже работает).** Пользователь -> `activity-tracker` -> Kafka -> StarRocks. Таблица `user_events` пополняется потоково через Routine Load.
 
-**Подготовка измерений и витрин (новое).** Раз в час StarRocks собственным планировщиком перезаливает таблицы `dim_films / dim_users / dim_genres` из Postgres через JDBC Catalog. Materialized views поверх `user_events` и `dim_*` пересчитываются StarRocks асинхронно по факту изменения источников.
+**Подготовка измерений и витрин.** Раз в час StarRocks собственным планировщиком перезаливает таблицы `dim_films / dim_users / dim_genres` из Postgres через JDBC Catalog. Materialized views поверх `user_events` и `dim_*` пересчитываются StarRocks асинхронно по факту изменения источников.
 
 **Жизненный цикл правила (аналитик).** Аналитик в DBeaver вызывает `alerting.adm_create_rule(...)` — правило ложится в таблицу `t_rules`.
 
-**Срабатывание правила (новое).** Планировщик движка по расписанию каждого активного правила выполняет его SQL в StarRocks, получает аудиторию, отсекает пользователей, попавших под лимит уведомлений, и одной транзакцией пишет историю отправок и создаёт задачу в `notifications-service`. Идемпотентный ключ задачи защищает от дублей при повторе после сбоя.
+**Срабатывание правила.** Планировщик движка по расписанию каждого активного правила выполняет его SQL в StarRocks, получает аудиторию, отсекает пользователей, попавших под лимит уведомлений, и одной транзакцией пишет историю отправок и создаёт задачу в `notifications-service`. Идемпотентный ключ задачи защищает от дублей при повторе после сбоя.
 
 **Доставка (уже работает).** `notifications-service` разворачивает задачу в сообщения, кладёт в RabbitMQ — отправитель писем доставляет в Mailpit.
 
 **Визуализация.** Superset по MySQL-протоколу читает Materialized views и строит дашборды.
+
+**Замыкание контура.** В письмо вшита персональная ссылка на `GET /ugc/email/click` (`activity-tracker`). Клик публикует событие `recommendation` (`action=clicked`) в Kafka, оно возвращается в `user_events`, а витрина `mv_rule_conversion` строит воронку «отправлено -> перешли по ссылке». Контур «данные -> письмо -> данные» замыкается, и правила можно сравнивать по доле перешедших.
 
 ### 6.4 Изменения в существующих сервисах для интеграции
 
 | Сервис | Что меняется |
 |---|---|
 | **auth-service** | Alembic-миграция в `auth.users`: добавляем nullable-колонки `gender VARCHAR(16)`, `age INTEGER`, `country VARCHAR(2)`, `is_demo BOOLEAN DEFAULT FALSE`. Pydantic-схемы профиля (`/me`, регистрация) расширяются соответствующими полями (`is_demo` — только для внутреннего использования). |
-| **activity-tracker-service** | Новый эндпоинт `POST /ugc/api/v1/events/recommendation` принимает реакции пользователя на письма alerting (поля `rule_code`, `notification_message_id`, `action ∈ {opened, clicked, dismissed}`, опц. `film_id`). Плюс публичный `GET /ugc/email/click` — ссылка из письма: клик публикует recommendation-событие (`action=clicked`) без JWT (в проде ссылку подписывать). Новый Kafka-топик `recommendations`. Замыкает контур «правило → задача → письмо → клик по ссылке → факт обратно в StarRocks»: переходы видны в Superset (`mv_rule_conversion`). |
+| **activity-tracker-service** | Новый эндпоинт `POST /ugc/api/v1/events/recommendation` принимает реакции пользователя на письма alerting (поля `rule_code`, `notification_message_id`, `action ∈ {opened, clicked, dismissed}`, опц. `film_id`). Плюс публичный `GET /ugc/email/click` — ссылка из письма: клик публикует recommendation-событие (`action=clicked`) без JWT (в проде ссылку подписывать). Новый Kafka-топик `recommendations`. Замыкает контур «правило -> задача -> письмо -> клик по ссылке -> факт обратно в StarRocks»: переходы видны в Superset (`mv_rule_conversion`). |
 | **starrocks_init/init.sql** | Таблица `user_events` переведена с `DUPLICATE KEY(request_id, user_id, event_type)` на **`PRIMARY KEY (request_id, event_type)`** — встроенная дедупликация StarRocks (REPLACE-семантика при конфликте PK). Добавлена Routine Load `recommendations_load` для нового event_type. Добавлены колонки `rule_code`, `notification_message_id`, `action`. |
 
 
@@ -161,8 +163,8 @@ Mindbox, Sendsay, RetentionRocket (Россия), Customer.io, Braze, Klaviyo, B
 | ORM и миграции | SQLAlchemy 2.0 + Alembic | Соответствует `notifications-service`, `auth-service`, `community-content-service`. |
 | Драйвер Postgres | `psycopg[binary]` или `asyncpg` | Согласовано с остальным проектом. |
 | Драйвер StarRocks | `aiomysql` / `PyMySQL` | StarRocks общается по MySQL-протоколу. |
-| BI | Apache Superset 4.x | Open-source, есть MySQL-коннектор, лучше Metabase работает на больших аналитических объёмах. |
-| Синхронизация dim-таблиц | StarRocks JDBC Catalog + `SUBMIT TASK ... SCHEDULE` | Нативный механизм StarRocks для пакетной загрузки из внешних БД — парный к Routine Load (та же логика «оркестрация внутри StarRocks», но для batch). Отдельный Python-сервис (как `films-etl-service` для Elasticsearch) был бы оправдан при CDC или сложных преобразованиях; для трёх таблиц с полной перезаливкой раз в час это избыточно. |
+| BI | Apache Superset 6.1.0 | Open-source, есть MySQL-коннектор, лучше Metabase работает на больших аналитических объёмах. |
+| Синхронизация dim-таблиц | StarRocks JDBC Catalog + `SUBMIT TASK ... SCHEDULE` | Нативный механизм StarRocks для пакетной загрузки из внешних БД — парный к Routine Load (та же логика «оркестрация внутри StarRocks», но для batch). Отдельный Python-сервис (как `films-etl-service` для Elasticsearch) был бы оправдан при CDC или сложных преобразованиях; для нескольких таблиц с полной перезаливкой раз в час это избыточно. |
 | Логи и ошибки | Структурированные JSON-логи в ELK, ошибки в Glitchtip | Уже развёрнуто в проекте. |
 
 ---
@@ -308,12 +310,15 @@ CREATE INDEX ON alerting.t_dispatch_history (rule_id, user_id, sent_at DESC);
 
 Все четыре — `PRIMARY KEY` таблицы StarRocks (поддерживают `INSERT OVERWRITE`).
 
-**Materialized views** (5 шт., по числу сценариев + два общих):
+**Журнал отправок** `dispatch_log(rule_code, user_id, sent_at, channel)` — копия `alerting.t_dispatch_history` (тем же JDBC Catalog + `SUBMIT TASK`, джойн с `t_rules` ради `rule_code`). Нужна, чтобы воронку отклика считать целиком в StarRocks: «сколько отправлено» живёт в Postgres, «сколько перешло по ссылке» — в `user_events`.
+
+**Materialized views** (6 шт.):
 - `mv_user_activity` — для сценария возврата угасшего пользователя: `(user_id, watches_last_30d, was_active_last_month BOOLEAN, last_watch_at)`.
 - `mv_user_top_genres` — компаньон того же сценария: `(user_id, top_genres ARRAY<STRING>)` (top-3 жанра по числу просмотров за 30 дней).
 - `mv_segment_film_activity` — для сценария тренда в сегменте.
 - `mv_film_watch_hourly` — общий MV (часовые агрегаты по фильмам), используется и в Superset, и в дополнительных правилах.
-- `mv_weekend_film_activity` — пример агрегата с join к `dim_date.is_weekend`. Поддерживает сценарий «фильм X стал популярен на выходных → промо в субботу утром».
+- `mv_weekend_film_activity` — пример агрегата с join к `dim_date.is_weekend`. Поддерживает сценарий «фильм X стал популярен на выходных -> промо в субботу утром».
+- `mv_rule_conversion` — воронка по каждому правилу: сколько писем отправлено (`dispatch_log`) и сколько пользователей перешло по ссылке (`user_events`, `event_type='recommendation'`, `action='clicked'`). Источник дашборда «отправлено -> перешли по ссылке».
 
 Все MV — async, refresh по факту изменения источников (StarRocks делает это автоматически).
 
@@ -389,7 +394,7 @@ WHERE a.user_id IS NULL
 ### 10.4 Сценарий C (основной) — Выходной всплеск (weekend burst)
 
 **Бизнес-история.** Группа пользователей активно смотрит подборку фильмов
-именно в субботу-воскресенье. → В пятницу утром им уходит письмо с
+именно в субботу-воскресенье. -> В пятницу утром им уходит письмо с
 подборкой на грядущие выходные.
 
 **MV `mv_weekend_film_activity`:** `(bucket_date DATE, film_id PK, views, unique_viewers)` — агрегат строится с фильтром `dim_date.is_weekend = TRUE`.

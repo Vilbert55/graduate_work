@@ -11,13 +11,13 @@ Apache Superset 6.1.0 — BI поверх Materialized views `ugc_analytics` в 
 3. **Подключение к StarRocks** — datasource `starrocks_analytics`, ходит
    под ролью `alert_reader` (только SELECT на `ugc_analytics.*`).
 
-## Готовые SQL для SQL Lab → Charts
+## Готовые SQL для SQL Lab -> Charts
 
 Запросы ниже работают сразу после первого refresh MV. Строятся руками во время
-демо (SQL Lab → CREATE CHART → выбрать тип визуализации). Подробная хореография —
-в `demo.md` §10–§11.
+демо (SQL Lab -> CREATE CHART -> выбрать тип визуализации). Подробная хореография —
+в `cheatsheets/demo_full.md` §10–§11.
 
-### Чарт 0 (главный) — воронка «отправили → перешли по ссылке» (Funnel)
+### Чарт 0 (главный) — воронка «отправили -> перешли по ссылке» (Funnel)
 
 Замыкание петли: видно, сколько людей перешли по ссылке из письма. «Отправлено»
 берётся из `dispatch_log` (копия `alerting.t_dispatch_history`, тянется в StarRocks
@@ -83,7 +83,7 @@ GROUP BY 1;
 
 ```bash
 docker compose up -d superset-db-init movies-superset
-# http://localhost:8088  →  admin / admin
+# http://localhost:8088  ->  admin / admin
 ```
 
 ## Почему не Metabase

@@ -21,7 +21,7 @@ from src.segments import AGE_BANDS, band_range
 
 
 # Все демо-юзеры создаются с одним фиксированным паролем: это тестовые
-# аккаунты, единый пароль упрощает демо (вход в Postman на шаге 9.1).
+# аккаунты, единый пароль упрощает демо.
 DEMO_PASSWORD = "demo_password"  # noqa: S105
 
 # Сегменты для распределения
@@ -67,9 +67,8 @@ async def _seed(count: int, segment_filter: str | None) -> int:
 
     conn = await asyncpg.connect(dsn=settings.database_dsn)
     try:
-        # Идемпотентность: убираем прошлых демо-юзеров. Каскадно удалятся
-        # их refresh_tokens / oauth_providers (ON DELETE CASCADE / FK без cascade
-        # очистится TRUNCATE-аналогом — здесь DELETE покрывает оба случая).
+        # Идемпотентность: сначала удаляем зависимые от users строки (внешние
+        # ключи), затем самих демо-юзеров.
         await conn.execute("DELETE FROM auth.refresh_tokens WHERE user_id IN (SELECT id FROM auth.users WHERE is_demo)")
         await conn.execute("DELETE FROM auth.user_roles    WHERE user_id IN (SELECT id FROM auth.users WHERE is_demo)")
         await conn.execute(

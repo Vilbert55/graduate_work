@@ -47,8 +47,8 @@ class EventInputCustom(EventInput):
 class EventInputRecommendation(EventInput):
     """Реакция пользователя на письмо/уведомление, порождённое правилом alerting-service.
 
-    Замыкает контур событий: правило → задача в notifications → письмо → клик
-    пользователя → факт обратно в StarRocks. Аналитик в Superset может посчитать
+    Замыкает контур событий: правило -> задача в notifications -> письмо -> клик
+    пользователя -> факт обратно в StarRocks. Аналитик в Superset может посчитать
     конверсию своих собственных правил.
     """
     rule_code: str = Field(description="Код правила alerting, породившего рекомендацию.")

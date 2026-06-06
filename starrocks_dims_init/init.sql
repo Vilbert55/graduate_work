@@ -57,7 +57,7 @@ PRIMARY KEY (film_id)
 DISTRIBUTED BY HASH(film_id) BUCKETS 4
 PROPERTIES (
     "replication_num" = "1",                  -- копий данных: 1 (dev на одном BE; в проде обычно 3)
-    "enable_persistent_index" = "true"        -- индекс PK на диске → быстрый UPSERT, не ест RAM
+    "enable_persistent_index" = "true"        -- индекс PK на диске -> быстрый UPSERT, не ест RAM
 );
 
 CREATE TABLE IF NOT EXISTS dim_users (
@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS dim_genres (
     name      VARCHAR(255) NULL
 )
 PRIMARY KEY (genre_id)
-DISTRIBUTED BY HASH(genre_id) BUCKETS 2     -- жанров мало → меньше бакетов, чем у остальных
+DISTRIBUTED BY HASH(genre_id) BUCKETS 2     -- жанров мало -> меньше бакетов, чем у остальных
 PROPERTIES (
     "replication_num" = "1",
     "enable_persistent_index" = "true"
@@ -205,13 +205,14 @@ JOIN pg_catalog.alerting.t_rules r ON r.id = d.rule_id;
 
 -- ============================================================
 -- 4. Регулярная синхронизация — нативный SUBMIT TASK
---    SCHEDULE EVERY 1 HOUR. На защите перед демо аналитик при
---    необходимости запускает руками: EXECUTE TASK sync_dim_users; ...
+--    SCHEDULE EVERY 1 HOUR. Для демо измерения обновляются вручную
+--    повтором INSERT OVERWRITE (см. demo.md): StarRocks 4.0.8 не
+--    поддерживает запуск задачи по имени.
 -- ============================================================
 
 -- SUBMIT TASK ... SCHEDULE EVERY (StarRocks) — нативный планировщик внутри БД:
 -- гоняет указанный SQL по расписанию без внешнего ETL/cron. DROP TASK снимает
--- прежнюю задачу перед пересозданием. Вручную запустить: EXECUTE TASK <имя>.
+-- прежнюю задачу перед пересозданием.
 DROP TASK IF EXISTS sync_dim_films;
 SUBMIT TASK sync_dim_films SCHEDULE EVERY (INTERVAL 1 HOUR)
 AS INSERT OVERWRITE dim_films
@@ -264,8 +265,9 @@ SELECT
     name
 FROM pg_catalog.content.genre;
 
--- dim_date растёт ровно на одну строку в сутки — отдельный SUBMIT TASK
--- (без расписания) для ручного запуска через EXECUTE TASK sync_dim_date.
+-- dim_date уже содержит даты на годы вперёд (content.date_dimension),
+-- поэтому ежечасная синхронизация не нужна — задача без расписания,
+-- выполняется один раз при SUBMIT.
 DROP TASK IF EXISTS sync_dim_date;
 SUBMIT TASK sync_dim_date
 AS INSERT OVERWRITE dim_date

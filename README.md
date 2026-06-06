@@ -1,4 +1,3 @@
-https://github.com/Vilbert55/notifications_sprint_1
 # Онлайн‑кинотеатр — платформа для поиска фильмов с системой авторизации
 
 Проект представляет собой набор микросервисов для онлайн‑кинотеатра.  
@@ -25,8 +24,8 @@ https://github.com/Vilbert55/notifications_sprint_1
 - **Filebeat** - агент сбора логов Docker-контейнеров, отправляет в Logstash
 - **Glitchtip(Sentry)** - мониторинг ошибок (films-search-service, auth-service, community-content-service, activity-tracker-service)
 - **Alerting Engine (APScheduler)** _(дипломный)_ — движок SQL-правил поверх StarRocks; по расписанию каждого правила формирует задачи в notifications-service. Управление через SQL-функции `alerting.adm_*` в DBeaver (нет HTTP-API).
-- **StarRocks dims + Materialized Views** _(дипломный)_ — `dim_films / dim_users / dim_genres / dim_date` (JDBC Catalog + `SUBMIT TASK SCHEDULE EVERY 1 HOUR`); 5 MV (`mv_user_activity / mv_user_top_genres / mv_segment_film_activity / mv_film_watch_hourly / mv_weekend_film_activity`).
-- **Apache Superset** _(дипломный)_ — BI поверх Materialized views StarRocks (datasource `starrocks_analytics`, роль `alert_reader`).
+- **StarRocks dims + Materialized Views** _(дипломный)_ — `dim_films / dim_users / dim_genres / dim_date` (JDBC Catalog + `SUBMIT TASK SCHEDULE EVERY 1 HOUR`); 6 MV (`mv_user_activity / mv_user_top_genres / mv_segment_film_activity / mv_film_watch_hourly / mv_weekend_film_activity / mv_rule_conversion`).
+- **Apache Superset** _(дипломный)_ — BI поверх Materialized views StarRocks (datasource `starrocks_analytics`, роль `alert_reader`). Главный дашборд — воронка «отправлено -> перешли по ссылке» (`mv_rule_conversion`): ссылка в письме -> `GET /ugc/email/click` -> событие обратно в StarRocks.
 - **Demo tools** _(дипломный, profile `demo`)_ — CLI `seed-users` / `trigger-events` для подготовки демо-сценариев.
 
 ## Быстрый запуск
@@ -87,8 +86,8 @@ https://github.com/Vilbert55/notifications_sprint_1
 ├── es_schema_movies.json       # Схема индекса фильмов для Elasticsearch
 ├── diploma_tz.md               # Дипломное ТЗ (расширенное)
 ├── diploma_tz_short.md         # Дипломное ТЗ (короткое)
-├── cheatsheet.md               # (дипломный) личная шпаргалка: как всё устроено end-to-end
-├── demo.md                     # (дипломный) сценарий демонстрации (запись видео)
+├── demo.md                     # (дипломный) сценарий демонстрации для ревьюера
+├── cheatsheets/                # (дипломный) личные шпаргалки: demo_full.md, cheatsheet.md
 ├── .github                     # Workflow Github Actions
 └── README.md                   # Этот файл
 ```
@@ -138,11 +137,11 @@ http://localhost/films-search/api/sentry-debug
 
 События, отправленные в Kafka через UGC API, непрерывно загружаются в StarRocks с помощью встроенного механизма Routine Load.
 
-- StarRocks подписывается на топики Kafka (`views`, `clicks`, `custom_events`).
+- StarRocks подписывается на топики Kafka (`views`, `clicks`, `custom_events`, `recommendations`).
 - При старте контейнера `starrocks-init` выполняет `init.sql`, который:
   - создаёт базу данных `ugc_analytics`;
   - создаёт таблицу `user_events` со схемой, подходящей для хранения событий всех типов;
-  - настраивает три Routine Load‑задачи — по одной на каждый топик.
+  - настраивает четыре Routine Load‑задачи — по одной на каждый топик.
 - Routine Load обеспечивает устойчивость к сбоям: после восстановления Kafka или StarRocks загрузка автоматически продолжается с последнего зафиксированного смещения.
 - Данные доступны для аналитических запросов через MySQL‑интерфейс StarRocks на порту `9030`.
 

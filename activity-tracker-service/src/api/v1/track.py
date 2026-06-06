@@ -36,7 +36,7 @@ bp = APIBlueprint('track', __name__, url_prefix='/ugc')
 _THANKS_HTML = """<!doctype html>
 <html lang="ru"><head><meta charset="utf-8"><title>Movies</title></head>
 <body style="font-family:sans-serif;text-align:center;margin-top:12%">
-<h2>Спасибо! Уже подбираем для вас фильмы 🎬</h2>
+<h2>Спасибо! Уже подбираем для вас фильмы.</h2>
 <p>Можно вернуться в почту и закрыть эту вкладку.</p>
 </body></html>"""
 

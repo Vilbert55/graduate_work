@@ -4,7 +4,7 @@ package-mode = false
 [project]
 name = "alerting-service"
 version = "0.1.0"
-description = "Alerting engine: APScheduler + SQL-правила поверх StarRocks → notifications-service"
+description = "Alerting engine: APScheduler + SQL-правила поверх StarRocks -> notifications-service"
 authors = [
     {name = "Савельичев Павел Иванович"}
 ]

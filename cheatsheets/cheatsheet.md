@@ -194,7 +194,7 @@ _enqueue_rule_run(rule_id, kind):
 Почему **в демо** обновляем измерения вручную: `SUBMIT TASK` идёт раз в час, ждать
 нельзя. StarRocks 4.0.8 **не поддерживает** `EXECUTE TASK <имя>`, поэтому повторяем
 тот же `INSERT OVERWRITE` + `REFRESH MATERIALIZED VIEW ... WITH SYNC MODE`
-(готовый блок — `examples.sql` §7, `demo.md` §3).
+(готовый блок — `examples.sql` §7, `demo_full.md` §3).
 
 ---
 
@@ -351,7 +351,7 @@ docker exec movies-starrocks mysql -h127.0.0.1 -P9030 -uroot -e "
   SHOW CATALOGS;                      -- есть pg_catalog
   SELECT count(*) FROM dim_films;     -- ~999
   SELECT count(*) FROM dim_date;      -- ~91051
-  SHOW MATERIALIZED VIEWS;            -- 5 mv_*
+  SHOW MATERIALIZED VIEWS;            -- 6 mv_*
   DESCRIBE user_events;               -- PRIMARY KEY(request_id, event_type)
   SHOW ROUTINE LOAD\G                 -- 4 загрузчика, состояние RUNNING"
 
@@ -362,4 +362,4 @@ docker exec movies-db psql -U postgres -d movies -c "\df alerting.adm_*"
 cd alerting-service && poetry run pytest -q
 ```
 
-Доступы и пошаговый сценарий показа — `demo.md`. Готовые SQL — `examples.sql`.
+Доступы и пошаговый сценарий показа — `demo_full.md` (рядом). Готовые SQL — `examples.sql`.

@@ -476,7 +476,7 @@ services:
     restart: unless-stopped
 
   # ------------------------------------------------------------------
-  # Дипломный сервис alerting: SQL-правила поверх StarRocks →
+  # Дипломный сервис alerting: SQL-правила поверх StarRocks ->
   # задачи в notifications-service по расписанию APScheduler.
   # ------------------------------------------------------------------
   movies-alerting-migrations:
