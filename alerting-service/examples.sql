@@ -4,8 +4,10 @@
 --     GRANT alerting_admin TO alerting_admin_ivanov;
 
 -- ============================================================
--- 1. Тестируем выборку в StarRocks (отдельным подключением DBeaver,
---    через MySQL-driver localhost:9030 / alert_reader).
+-- 1. ОБЯЗАТЕЛЬНО СНАЧАЛА: проверяем выборку прямо в StarRocks (отдельным
+--    подключением DBeaver через MySQL-driver localhost:9030 / alert_reader).
+--    Postgres диалект StarRocks не понимает и SQL за вас не проверит — это
+--    делает аналитик здесь, затем подтверждает через adm_dry_run_rule (шаг 3).
 -- ============================================================
 
 -- USE ugc_analytics;

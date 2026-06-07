@@ -17,4 +17,9 @@ COPY . .
 
 RUN chmod +x /opt/alerting-service/docker-entrypoint.sh
 
+# Запуск от не root пользователя.
+RUN useradd --create-home --uid 10001 appuser \
+    && chown -R appuser:appuser /opt/alerting-service
+USER appuser
+
 ENTRYPOINT ["/opt/alerting-service/docker-entrypoint.sh"]

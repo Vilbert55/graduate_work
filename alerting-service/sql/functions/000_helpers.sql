@@ -34,11 +34,14 @@ $$;
 
 -- @statement
 
--- Статическая проверка SQL правила. Соединения Postgres -> StarRocks нет,
--- поэтому EXPLAIN здесь невозможен; проверяем только форму запроса: это запрос
--- на чтение (SELECT/WITH), один оператор, есть колонка user_id. Реальную
--- проверку исполнимости делает adm_dry_run_rule (движок реально выполняет SQL
--- под alert_reader). NULL пропускается (в adm_update_rule значит «не менять»).
+-- Статическая проверка SQL правила. Соединения Postgres -> StarRocks нет, да и
+-- диалект StarRocks (to_json/named_struct/INTERVAL ... DAY) Postgres не понимает,
+-- поэтому EXPLAIN/прогон здесь невозможны — проверяем только форму запроса: это
+-- запрос на чтение (SELECT/WITH), один оператор, есть колонка user_id. Реальную
+-- проверку исполнимости делает adm_dry_run_rule (движок выполняет SQL под ролью
+-- alert_reader — только SELECT на ugc_analytics, поэтому неверный SQL не навредит
+-- данным, а упавший запуск виден в v_runs). NULL пропускается (в adm_update_rule
+-- значит «не менять»).
 CREATE OR REPLACE FUNCTION alerting._check_rule_sql(p_sql TEXT)
 RETURNS VOID
 LANGUAGE plpgsql
@@ -48,6 +51,10 @@ DECLARE
     -- btrim с одним аргументом снимает только пробелы; многострочный SQL
     -- (блок $sql$ ... $sql$) начинается с переноса строки — снимаем и его.
     v_sql TEXT := btrim(p_sql, E' \t\n\r');
+    -- Копия без SQL-комментариев: чтобы user_id или ';' внутри комментария не
+    -- обманывали проверки ниже.
+    -- реальная исполнимость проверяется через adm_dry_run_rule.
+    v_check TEXT;
 BEGIN
     IF p_sql IS NULL THEN
         RETURN;
@@ -55,14 +62,17 @@ BEGIN
     IF v_sql = '' THEN
         RAISE EXCEPTION 'invalid_sql: empty';
     END IF;
-    IF v_sql !~* '^(select|with)\y' THEN
+    v_check := regexp_replace(v_sql, '/\*.*?\*/', ' ', 'gs');  -- блочные /* ... */
+    v_check := regexp_replace(v_check, '--[^\n]*', ' ', 'g');   -- строчные -- ...
+    v_check := btrim(v_check, E' \t\n\r');
+    IF v_check !~* '^(select|with)\y' THEN
         RAISE EXCEPTION 'invalid_sql: query must start with SELECT or WITH';
     END IF;
     -- Точка с запятой не в самом конце = несколько операторов.
-    IF rtrim(v_sql, E'; \n\t') ~ ';' THEN
+    IF rtrim(v_check, E'; \n\t') ~ ';' THEN
         RAISE EXCEPTION 'invalid_sql: only a single statement is allowed';
     END IF;
-    IF v_sql !~* 'user_id' THEN
+    IF v_check !~* 'user_id' THEN
         RAISE EXCEPTION 'invalid_sql: query must return column user_id';
     END IF;
 END;

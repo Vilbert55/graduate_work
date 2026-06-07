@@ -12,6 +12,8 @@ from src.services.executor import (
     _extract_audience,
     _filter_by_cap,
     _parse_context,
+    _pos_int_or_none,
+    _truncate_to_max,
 )
 
 
@@ -116,3 +118,41 @@ class TestFrequencyCap:
         cap = FrequencyCap.build({"per_rule_per_user_days": 7}, 3)
         assert (cap.per_rule_per_user_days, cap.per_user_per_day) == (7, 3)
         assert not cap.is_empty
+
+
+# Усечение аудитории до потолка правила (max_users).
+
+class TestTruncateToMax:
+    def test_under_limit_unchanged(self):
+        audience = [("u1", None), ("u2", None)]
+        assert _truncate_to_max(audience, 5) == audience
+
+    def test_equal_limit_unchanged(self):
+        audience = [("u1", None), ("u2", None)]
+        assert _truncate_to_max(audience, 2) == audience
+
+    def test_over_limit_truncated_in_order(self):
+        audience = [("u1", None), ("u2", None), ("u3", None)]
+        assert _truncate_to_max(audience, 2) == [("u1", None), ("u2", None)]
+
+
+# Разбор положительного целого (используется при сборке FrequencyCap).
+
+class TestPosIntOrNone:
+    def test_positive_int(self):
+        assert _pos_int_or_none(5) == 5
+
+    def test_zero_is_none(self):
+        assert _pos_int_or_none(0) is None
+
+    def test_negative_is_none(self):
+        assert _pos_int_or_none(-3) is None
+
+    def test_numeric_string(self):
+        assert _pos_int_or_none("7") == 7
+
+    def test_non_numeric_is_none(self):
+        assert _pos_int_or_none("abc") is None
+
+    def test_none_is_none(self):
+        assert _pos_int_or_none(None) is None
