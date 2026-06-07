@@ -30,6 +30,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 import aiomysql
+import asyncpg
 from sqlalchemy import text
 
 from src.core.config import settings
@@ -58,7 +59,47 @@ def _utc_now() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
-async def execute_rule(rule_id: uuid.UUID, run_id: uuid.UUID | None = None, *, dry_run: bool = False) -> uuid.UUID:
+async def execute_rule(
+    rule_id: uuid.UUID, run_id: uuid.UUID | None = None, *, dry_run: bool = False,
+) -> uuid.UUID | None:
+    """Выполнить срабатывание правила под защитой от конкурентного запуска.
+
+    Ситуация: ручной триггер (adm_trigger_rule) может наложиться на плановый запуск по
+    cron или на recovery — run_id у них разные, значит разные идемпотентные ключи
+    alerting:{rule_id}:{run_id}, и frequency cap дубли не поймает (оба читают
+    историю до коммита). Session-level advisory lock на rule_id пропускает только
+    один запуск; параллельный помечаем 'skipped' и выходим. Лок держим на отдельном
+    соединении — его закрытие снимает лок даже при сбое (lock cluster-wide, поэтому
+    страхует и от второго экземпляра движка).
+
+    Возвращает run_id (или None, если плановый запуск пропущен по локу).
+    """
+    lock_conn = await asyncpg.connect(dsn=settings.asyncpg_dsn)
+    try:
+        locked: bool = await lock_conn.fetchval(
+            "SELECT pg_try_advisory_lock(hashtext($1)::bigint)", f"alerting:rule:{rule_id}",
+        )
+        if not locked:
+            logger.warning(
+                "rule already running — skipping",
+                extra={"rule_id": str(rule_id), "run_id": str(run_id) if run_id else None},
+            )
+            if run_id is not None:
+                # Запуск уже создан - закрываем его как skipped,
+                # чтобы он не висел в running и его не подхватил recovery.
+                await lock_conn.execute(
+                    "UPDATE alerting.t_runs SET status = 'skipped', "
+                    "finished_at = (now() AT TIME ZONE 'utc') "
+                    "WHERE id = $1 AND status = 'running'",
+                    run_id,
+                )
+            return run_id
+        return await _execute_locked(rule_id, run_id, dry_run=dry_run)
+    finally:
+        await lock_conn.close()
+
+
+async def _execute_locked(rule_id: uuid.UUID, run_id: uuid.UUID | None = None, *, dry_run: bool = False) -> uuid.UUID:
     """Выполнить полный цикл одного срабатывания правила.
 
     rule_id: UUID правила.
@@ -98,12 +139,13 @@ async def execute_rule(rule_id: uuid.UUID, run_id: uuid.UUID | None = None, *, d
             cap = FrequencyCap.build(rule["frequency_cap"], settings.global_per_user_per_day)
             blocked = await _blocked_by_cap(session, rule_id, cap, audience)
             kept = _filter_by_cap(audience, blocked)
-            if len(kept) > rule["max_users"]:
+            truncated = _truncate_to_max(kept, rule["max_users"])
+            if len(truncated) < len(kept):
                 logger.warning(
                     "audience exceeds max_users — truncating",
                     extra={"rule_id": str(rule_id), "after_cap": len(kept), "max_users": rule["max_users"]},
                 )
-                kept = kept[: rule["max_users"]]
+            kept = truncated
 
             task_id: uuid.UUID | None = None
             if kept and not dry_run:
@@ -201,6 +243,11 @@ def _filter_by_cap(audience: Audience, blocked: set[str]) -> Audience:
     blocked: user_id, которым слать нельзя (результат _blocked_by_cap).
     """
     return [(uid, ctx) for uid, ctx in audience if uid not in blocked]
+
+
+def _truncate_to_max(audience: Audience, max_users: int) -> Audience:
+    """Возвращает аудиторию, усечённую до max_users (потолок выборки правила)."""
+    return audience[:max_users] if len(audience) > max_users else audience
 
 
 async def _blocked_by_cap(session: AsyncSession, rule_id: uuid.UUID, cap: FrequencyCap, audience: Audience) -> set[str]:

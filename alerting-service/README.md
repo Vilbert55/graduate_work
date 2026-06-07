@@ -42,6 +42,17 @@ WHERE a.was_active_last_month = TRUE
 кладёт его в `audience.params_by_user[user_id]`, а scheduler `notifications`
 мерджит поверх общих `params` при рендере Jinja.
 
+## Валидация SQL-правил
+
+Postgres не имеет соединения со StarRocks и не понимает её диалект (`to_json`,
+`named_struct`, `INTERVAL ... DAY`), поэтому проверить исполнимость запроса прямо
+в `adm_create_rule` нельзя. Контроль многоуровневый:
+
+1. **Статическая проверка формы** в `adm_create_rule` (read-only `SELECT`/`WITH`, один оператор, есть колонка `user_id`; комментарии при проверке игнорируются).
+2. **Аналитик заранее проверяет SQL в StarRocks сам** (DBeaver под `alert_reader`) см. `examples.sql`, шаг 1. Это обязательный первый шаг.
+3. **`adm_dry_run_rule`** — реальный прогон в StarRocks без рассылки. Правило создаётся выключенным (`is_enabled=FALSE`); включать после успешного dry-run.
+4. **Безопасность: роль `alert_reader`** (только `SELECT` на `ugc_analytics`): даже неверный SQL не изменит данные, а упавший запуск виден в `v_runs` (`status='failed'`), письма при этом не уходят.
+
 ## SQL-API: соглашение об именовании
 
 Все объекты в схеме `alerting`.
@@ -82,6 +93,24 @@ GRANT alerting_admin TO alerting_admin_ivanov;
 
 Полный набор примеров — `examples.sql`.
 
+## Переменные окружения
+
+Postgres берётся из **общих** переменных проекта (БД `movies` одна на весь
+`docker-compose`), всё остальное — под префиксом `ALERTING_`:
+
+| Переменная | Назначение |
+|---|---|
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | Креды общей БД |
+| `SQL_HOST` / `DB_PORT` | Хост / порт Postgres |
+| `ALERTING_STARROCKS_HOST/PORT/USER/PASSWORD/DB` | Подключение к StarRocks (роль `alert_reader`) |
+| `ALERTING_STARROCKS_QUERY_TIMEOUT_SEC` | Тайм-аут SQL-правила (30) |
+| `ALERTING_STARROCKS_CONNECT_TIMEOUT_SEC` | Тайм-аут установки соединения (10) |
+| `ALERTING_RULES_REFRESH_INTERVAL_SEC` | Период пересинхронизации правил (60) |
+| `ALERTING_DISPATCH_RETENTION_DAYS` | Хранение истории отправок, дней (90) |
+| `ALERTING_RECOVERY_GRACE_SEC` | Порог «осиротевшего» running-запуска (300) |
+| `ALERTING_GLOBAL_PER_USER_PER_DAY` | Общий дневной потолок писем на пользователя (3; 0 — выкл.) |
+| `ALERTING_LOG_LEVEL` / `ALERTING_SENTRY_DSN` | Логи / Sentry |
+
 ## Структура
 
 ```
@@ -113,6 +142,9 @@ alerting-service/
 ```
 
 ## Тесты
+
+Нужен **Poetry ≥ 2.0** (конфиг на PEP 621 `[project]`; на Poetry 1.x команда
+падает с ошибкой `'name'`).
 
 ```bash
 cd alerting-service && poetry install --with dev && poetry run pytest

@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     # Параметры движка
     rules_refresh_interval_sec: int = 60     # как часто перечитывать t_rules
     starrocks_query_timeout_sec: int = 30    # тайм-аут SQL-правила
+    starrocks_connect_timeout_sec: int = 10  # тайм-аут установки соединения со StarRocks
     dispatch_retention_days: int = 90        # хранение t_dispatch_history (retention партиций)
     recovery_grace_sec: int = 300            # старше скольки секунд «running» запуск считаем осиротевшим
     # Общий потолок писем на пользователя в сутки по ВСЕМ правилам (0 — выключен).
