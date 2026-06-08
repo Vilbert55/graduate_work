@@ -448,6 +448,15 @@ REFRESH MATERIALIZED VIEW mv_rule_conversion WITH SYNC MODE;
 Funnel-чарте: «перешли по ссылке» = 5 (или сколько кликнули). Видно **на глазах**:
 из 17 отправленных столько-то реально перешли по ссылке из письма.
 
+> ⚠️ Если «перешли по ссылке» = 0, хотя клики видны в Kafka UI (топик
+> `recommendations`): значит Routine Load `recommendations_load` стоит на паузе и не
+> забирает клики в `user_events`. Проверка: `SHOW ROUTINE LOAD FOR
+> ugc_analytics.recommendations_load\G` — `PAUSED` с `unknown topic` означает гонку
+> init (load создан раньше топика). Устранено зависимостью `movies-starrocks-init`
+> от `movies-kafka-init` в `docker-compose.yml`; на уже поднятом стенде —
+> `RESUME ROUTINE LOAD FOR ugc_analytics.recommendations_load;` (а если `Progress`
+> ушёл к концу и `loadedRows=0` — `STOP` и пересоздать из `starrocks_init/init.sql`).
+
 🎬 **Что это значит (сказать на видео).** Раньше после письма наступала тишина;
 теперь виден реальный отклик — сколько людей кликнули ссылку из письма. Это
 закрывает контур «данные -> письмо -> снова данные», и правила можно сравнивать

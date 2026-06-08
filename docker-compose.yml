@@ -625,6 +625,11 @@ services:
     depends_on:
       movies-starrocks:
         condition: service_healthy
+      # Топики Kafka должны существовать ДО CREATE ROUTINE LOAD: иначе load по
+      # ещё не созданному топику (recommendations создаётся последним) встаёт в
+      # PAUSED с "unknown topic" и сам не возобновляется.
+      movies-kafka-init:
+        condition: service_completed_successfully
 
   # Дипломная часть: dim-таблицы, JDBC Catalog поверх Postgres,
   # SUBMIT TASK для часовой синхронизации, Materialized views.
