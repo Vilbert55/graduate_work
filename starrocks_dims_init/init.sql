@@ -204,10 +204,9 @@ FROM pg_catalog.alerting.t_dispatch_history d
 JOIN pg_catalog.alerting.t_rules r ON r.id = d.rule_id;
 
 -- ============================================================
--- 4. Регулярная синхронизация — нативный SUBMIT TASK
---    SCHEDULE EVERY 1 HOUR. Для демо измерения обновляются вручную
---    повтором INSERT OVERWRITE (см. demo.md): StarRocks 4.0.8 не
---    поддерживает запуск задачи по имени.
+-- 4. Регулярная синхронизация — нативный SUBMIT TASK SCHEDULE EVERY.
+--    dim_* — раз в час (меняются редко); dispatch_log — каждые 30с, чтобы
+--    «отправлено» в воронке демо появлялось без ручного INSERT OVERWRITE.
 -- ============================================================
 
 -- SUBMIT TASK ... SCHEDULE EVERY (StarRocks) — нативный планировщик внутри БД:
@@ -277,9 +276,10 @@ SELECT
     d.is_weekend, coalesce(d.is_holiday, FALSE)
 FROM pg_catalog.content.date_dimension d;
 
--- Журнал отправок: тянем из Postgres ежечасно (как и dim_*).
+-- Журнал отправок: тянем из Postgres каждые 30с, чтобы «отправлено» в воронке
+-- появлялось без ручного INSERT OVERWRITE (минимум для SUBMIT TASK — 10с).
 DROP TASK IF EXISTS sync_dispatch_log;
-SUBMIT TASK sync_dispatch_log SCHEDULE EVERY (INTERVAL 1 HOUR)
+SUBMIT TASK sync_dispatch_log SCHEDULE EVERY (INTERVAL 10 SECOND)
 AS INSERT OVERWRITE dispatch_log
 SELECT
     r.code AS rule_code,
@@ -290,19 +290,26 @@ FROM pg_catalog.alerting.t_dispatch_history d
 JOIN pg_catalog.alerting.t_rules r ON r.id = d.rule_id;
 
 -- ============================================================
--- 5. Materialized views (async refresh — пересчитываются автоматически
---    при изменении источников).
+-- 5. Materialized views.
 -- ============================================================
 
--- MATERIALIZED VIEW в StarRocks — это физически хранимый, заранее посчитанный
--- результат запроса (не «вьюха на лету»). REFRESH ASYNC — StarRocks сам
--- пересчитывает его в фоне при изменении источников. DISTRIBUTED BY — как у
--- таблиц, задаёт бакетирование хранимого результата. Пояснения — у первого MV ниже.
+-- MATERIALIZED VIEW — физически хранимый, заранее посчитанный результат запроса
+-- (не «вьюха на лету»). DISTRIBUTED BY задаёт бакетирование результата, как у таблиц.
+--
+-- REFRESH ASYNC без EVERY: StarRocks пересчитывает MV при изменении источников
+-- через DML (INSERT / INSERT OVERWRITE — так живут dim_* и dispatch_log), но коммиты
+-- Routine Load (поток в user_events) пересчёт не триггерят. Поэтому витрины поверх
+-- user_events пересчитывают вручную перед чтением (см. demo.md); mv_rule_conversion —
+-- на таймере (EVERY), её данные нужны «на лету».
+
+-- StarRocks по умолчанию не разрешает MV-таймер EVERY < 60с; опускаем порог, чтобы
+-- воронка mv_rule_conversion (ниже) освежалась раз в 10с.
+ADMIN SET FRONTEND CONFIG ("materialized_view_min_refresh_interval" = "10");
 
 -- 5.1 mv_user_activity — для сценария «возврат угасшего пользователя».
 CREATE MATERIALIZED VIEW IF NOT EXISTS mv_user_activity
 DISTRIBUTED BY HASH(user_id) BUCKETS 4
-REFRESH ASYNC                                -- фоновый автопересчёт при изменении user_events
+REFRESH ASYNC                                -- источник user_events: пересчёт вручную перед чтением (см. блок выше)
 PROPERTIES ("replication_num" = "1")
 AS
 SELECT
@@ -406,7 +413,10 @@ GROUP BY date(e.client_time), e.film_id;
 --     тоже остаётся в витрине (clicked_users = 0).
 CREATE MATERIALIZED VIEW IF NOT EXISTS mv_rule_conversion
 DISTRIBUTED BY HASH(rule_code) BUCKETS 4
-REFRESH ASYNC
+-- Таймер (EVERY): клики идут через Routine Load (см. блок выше про пересчёт),
+-- поэтому воронка обновляется сама каждые 10с (порог опущен в начале секции);
+-- прогон без новых данных = SKIPPED, дёшево.
+REFRESH ASYNC EVERY (INTERVAL 10 SECOND)
 PROPERTIES ("replication_num" = "1")
 AS
 SELECT

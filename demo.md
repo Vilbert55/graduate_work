@@ -143,16 +143,9 @@ Mailpit: новых писем нет.
 `recommendation` (`action=clicked`) в Kafka -> `user_events`. Журнал отправок
 копируется в StarRocks (`dispatch_log`), витрина `mv_rule_conversion` строит воронку.
 
-Шаг 1 - пустая воронка (`starrocks-root`):
-
-```sql
-USE ugc_analytics;
-INSERT OVERWRITE dispatch_log
-SELECT r.code, CAST(d.user_id AS VARCHAR(36)), d.sent_at, d.channel
-FROM pg_catalog.alerting.t_dispatch_history d
-JOIN pg_catalog.alerting.t_rules r ON r.id = d.rule_id;
-REFRESH MATERIALIZED VIEW mv_rule_conversion WITH SYNC MODE;
-```
+Шаг 1 - пустая воронка. После рассылки (§5) журнал отправок сам копируется из
+Postgres в `dispatch_log` задачей `sync_dispatch_log` (каждые 30с), а
+`mv_rule_conversion` считается по таймеру (`EVERY 10s`) — руками ничего не запускаем.
 
 В Superset (SQL Lab -> Funnel Chart, database `starrocks_analytics`):
 
@@ -168,11 +161,10 @@ FROM ugc_analytics.mv_rule_conversion WHERE rule_code='winback_active_user';
 В Kafka UI (`http://localhost:8081`) топик `recommendations` наполнится ровно на
 число кликов - переходы реально прошли через шину.
 
-Шаг 3 - пересчитать витрину и нажать RUN на чарте:
-
-```sql
-REFRESH MATERIALIZED VIEW mv_rule_conversion WITH SYNC MODE;
-```
+Шаг 3 - воронка наполняется сама. Через ~10-20 с (таймер витрины 10с + батч
+Routine Load) `clicked_users` растёт без команд. В SQL Lab нажать RUN, чтобы
+перечитать чарт (для hands-free — дашборд с auto-refresh); нужно мгновенно для
+записи — `REFRESH MATERIALIZED VIEW mv_rule_conversion WITH SYNC MODE`.
 
 Показывает: контур замкнулся - виден реальный отклик на письма. Повторный клик по
 той же ссылке дубля не создаёт (`request_id = uuid5(rule, run, user)`).

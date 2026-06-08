@@ -625,9 +625,8 @@ services:
     depends_on:
       movies-starrocks:
         condition: service_healthy
-      # Топики Kafka должны существовать ДО CREATE ROUTINE LOAD: иначе load по
-      # ещё не созданному топику (recommendations создаётся последним) встаёт в
-      # PAUSED с "unknown topic" и сам не возобновляется.
+      # Топики Kafka должны существовать до CREATE ROUTINE LOAD: иначе load по
+      # отсутствующему топику встаёт в PAUSED ("unknown topic") и сам не оживает.
       movies-kafka-init:
         condition: service_completed_successfully
 

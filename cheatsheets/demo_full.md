@@ -401,16 +401,9 @@ X-axis `bucket_hour`, Metric `views` -> **CREATE CHART** -> **SAVE**. Линия
 JDBC-механизмом, что и `dim_*` (таблица `dispatch_log`), а витрина
 `mv_rule_conversion` джойнит его с реакциями.
 
-🎬 **Шаг 1. Пустая воронка (письма ушли, переходов ещё нет).** Перенести журнал
-отправок в StarRocks и посчитать витрину (подключение `starrocks-root`):
-```sql
-USE ugc_analytics;
-INSERT OVERWRITE dispatch_log
-SELECT r.code, CAST(d.user_id AS VARCHAR(36)), d.sent_at, d.channel
-FROM pg_catalog.alerting.t_dispatch_history d
-JOIN pg_catalog.alerting.t_rules r ON r.id = d.rule_id;
-REFRESH MATERIALIZED VIEW mv_rule_conversion WITH SYNC MODE;
-```
+🎬 **Шаг 1. Пустая воронка (письма ушли, переходов ещё нет).** Журнал отправок сам
+копируется из Postgres в `dispatch_log` задачей `sync_dispatch_log` (каждые 30с), а
+`mv_rule_conversion` считается по таймеру (`EVERY 10s`) — руками ничего не запускаем.
 В Superset SQL Lab построить **Funnel Chart** (Database `starrocks_analytics`):
 ```sql
 SELECT 'отправлено' AS stage, sent_users AS users
@@ -439,23 +432,16 @@ SELECT count(DISTINCT user_id) FROM ugc_analytics.user_events
 WHERE event_type='recommendation' AND action='clicked';   -- = сколько кликнули
 ```
 
-🎬 **Шаг 3. Воронка наполняется.** Пересчитать витрину (`starrocks-root`):
-```sql
-USE ugc_analytics;
-REFRESH MATERIALIZED VIEW mv_rule_conversion WITH SYNC MODE;
-```
-(`dispatch_log` не трогаем — отправки не менялись.) Нажать **RUN** на том же
-Funnel-чарте: «перешли по ссылке» = 5 (или сколько кликнули). Видно **на глазах**:
-из 17 отправленных столько-то реально перешли по ссылке из письма.
+🎬 **Шаг 3. Воронка наполняется сама.** `mv_rule_conversion` на таймере
+(`EVERY 10s`), `dispatch_log` не трогаем — через ~10-20 с (таймер + батч
+Routine Load) `clicked_users` растёт без ручного пересчёта. Нажать **RUN** на
+Funnel-чарте: «перешли по ссылке» = 5 (или сколько кликнули). Видно: из 17
+отправленных столько-то реально перешли по ссылке. Нужно мгновенно — `REFRESH
+MATERIALIZED VIEW mv_rule_conversion WITH SYNC MODE`.
 
-> ⚠️ Если «перешли по ссылке» = 0, хотя клики видны в Kafka UI (топик
-> `recommendations`): значит Routine Load `recommendations_load` стоит на паузе и не
-> забирает клики в `user_events`. Проверка: `SHOW ROUTINE LOAD FOR
-> ugc_analytics.recommendations_load\G` — `PAUSED` с `unknown topic` означает гонку
-> init (load создан раньше топика). Устранено зависимостью `movies-starrocks-init`
-> от `movies-kafka-init` в `docker-compose.yml`; на уже поднятом стенде —
-> `RESUME ROUTINE LOAD FOR ugc_analytics.recommendations_load;` (а если `Progress`
-> ушёл к концу и `loadedRows=0` — `STOP` и пересоздать из `starrocks_init/init.sql`).
+> Для полностью hands-free показа — сохранить чарт на дашборд и включить ему
+> auto-refresh (Edit dashboard -> Set auto-refresh interval -> 10-30 с): столбики
+> двигаются сами по мере кликов.
 
 🎬 **Что это значит (сказать на видео).** Раньше после письма наступала тишина;
 теперь виден реальный отклик — сколько людей кликнули ссылку из письма. Это
