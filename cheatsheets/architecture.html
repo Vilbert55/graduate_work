@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Архитектура киносервиса + дипломный alerting-service</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{height:100%;}
+  body{background:#eceff3;color:#111;font-family:Arial,Helvetica,sans-serif;
+    display:flex;flex-direction:column;align-items:center;}
+  .toolbar{position:fixed;top:10px;right:12px;z-index:10;display:flex;gap:8px;}
+  .toolbar button{border:1px solid #c4ccd6;background:#fff;border-radius:8px;
+    padding:8px 12px;font-size:13px;font-weight:700;cursor:pointer;}
+  .toolbar button:hover{background:#f1f4f8;}
+  .stage{width:100%;max-width:1700px;padding:14px;}
+  svg{width:100%;height:auto;display:block;background:#fff;border:1px solid #d8dee6;border-radius:10px;}
+  @media print{.toolbar{display:none;} body{background:#fff;} svg{border:none;}}
+</style>
+</head>
+<body>
+<div class="toolbar">
+  <button onclick="document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen()">⛶ На весь экран</button>
+  <button onclick="window.print()">⎙ Печать / PDF</button>
+</div>
+<div class="stage">
+<svg viewBox="0 0 1680 1260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Архитектура онлайн-кинотеатра с дипломным сервисом alerting">
+  <style>
+    .ttl{font:800 62px Arial;fill:#111}
+    .sub{font:400 23px Arial;fill:#566}
+    .num{font:800 56px Arial}
+    .tab{font:700 18px Arial;fill:#fff}
+    .tabd{font:700 18px Arial;fill:#111}
+    .t{font:700 16px Arial;fill:#111}
+    .s{font:400 12.5px Arial;fill:#5a6472}
+    .cap{font:400 13.5px Arial;fill:#333}
+    .mini{font:400 11px Arial;fill:#71808f}
+    .lblb{font:700 12.5px Arial;fill:#1565d8}
+    .lbla{font:700 12.5px Arial;fill:#c97a00}
+    .lblg{font:700 11.5px Arial;fill:#8a93a0}
+    .leg{font:600 15px Arial;fill:#333}
+  </style>
+  <defs>
+    <marker id="mB" viewBox="0 0 12 10" refX="11" refY="5" markerWidth="13" markerHeight="11" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L12,5 L0,10 z" fill="#1565d8"/></marker>
+    <marker id="mA" viewBox="0 0 12 10" refX="11" refY="5" markerWidth="14" markerHeight="12" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L12,5 L0,10 z" fill="#f5a623"/></marker>
+    <marker id="mG" viewBox="0 0 12 10" refX="11" refY="5" markerWidth="12" markerHeight="10" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L12,5 L0,10 z" fill="#9aa3b0"/></marker>
+
+    <g id="db"><path d="M2,12 V58 A28,10 0 0 0 58,58 V12" fill="#fff" stroke="#111" stroke-width="3"/><ellipse cx="30" cy="12" rx="28" ry="10" fill="#fff" stroke="#111" stroke-width="3"/></g>
+    <g id="ngx"><polygon points="32,2 60,18 60,54 32,70 4,54 4,18" fill="#1565d8"/><text x="32" y="49" text-anchor="middle" font-size="34" font-weight="800" fill="#fff" font-family="Arial">N</text></g>
+    <g id="ph"><rect x="2" y="2" width="52" height="86" rx="11" fill="#fff" stroke="#111" stroke-width="3"/><circle cx="28" cy="40" r="17" fill="none" stroke="#1565d8" stroke-width="3"/></g>
+    <g id="q"><rect x="2" y="2" width="58" height="44" rx="7" fill="#fff" stroke="#111" stroke-width="3"/><circle cx="17" cy="24" r="5" fill="#1565d8"/><circle cx="31" cy="24" r="5" fill="#1565d8"/><circle cx="45" cy="24" r="5" fill="#1565d8"/></g>
+    <g id="es"><circle cx="26" cy="26" r="18" fill="#fff" stroke="#1565d8" stroke-width="4"/><line x1="39" y1="39" x2="56" y2="56" stroke="#1565d8" stroke-width="5" stroke-linecap="round"/></g>
+    <g id="doc"><rect x="4" y="2" width="46" height="60" rx="4" fill="#fff" stroke="#111" stroke-width="3"/><text x="27" y="40" text-anchor="middle" font-size="20" font-weight="800" fill="#1565d8" font-family="Arial">&lt;/&gt;</text></g>
+  </defs>
+
+  <!-- ===== TITLE ===== -->
+  <text class="ttl" x="44" y="86">Онлайн кинотеатр</text>
+
+  <!-- ===================== EXISTING PLATFORM ===================== -->
+  <!-- P1 Admin -->
+  <g>
+    <rect x="40" y="150" width="500" height="270" rx="6" fill="#fff" stroke="#111" stroke-width="3"/>
+    <rect x="58" y="166" width="148" height="34" fill="#111"/><text class="tab" x="68" y="190">Admin panel</text>
+    <text class="num" x="516" y="216" text-anchor="end" fill="#1565d8">1</text>
+    <use href="#ph" x="110" y="250"/><text class="t" x="136" y="296" text-anchor="middle" fill="#1565d8">D</text><text class="mini" x="136" y="360" text-anchor="middle">Django</text>
+    <path d="M178,290 H236" stroke="#1565d8" stroke-width="3" marker-end="url(#mB)" marker-start="url(#mB)"/>
+    <use href="#db" x="250" y="255"/><text class="mini" x="280" y="360" text-anchor="middle">PostgreSQL</text>
+    <text class="cap" x="120" y="396">управление фильмами · менеджеры</text>
+  </g>
+  <!-- P2 Search -->
+  <g>
+    <rect x="585" y="150" width="500" height="270" rx="6" fill="#fff" stroke="#111" stroke-width="3"/>
+    <rect x="603" y="166" width="244" height="34" fill="#111"/><text class="tab" x="613" y="190">Полнотекстовый поиск</text>
+    <text class="num" x="1061" y="216" text-anchor="end" fill="#1565d8">2</text>
+    <use href="#doc" x="660" y="262"/><text class="mini" x="683" y="350" text-anchor="middle">ETL</text>
+    <path d="M716,292 H792" stroke="#1565d8" stroke-width="3" marker-end="url(#mB)"/>
+    <use href="#es" x="806" y="262"/><text class="mini" x="836" y="350" text-anchor="middle">Elasticsearch</text>
+    <text class="cap" x="660" y="396">films-etl → ES · films-search (FastAPI)</text>
+  </g>
+  <!-- P3 Async API -->
+  <g>
+    <rect x="1130" y="150" width="500" height="270" rx="6" fill="#fff" stroke="#111" stroke-width="3"/>
+    <rect x="1148" y="166" width="142" height="34" fill="#111"/><text class="tab" x="1158" y="190">Async API</text>
+    <text class="num" x="1606" y="216" text-anchor="end" fill="#1565d8">3</text>
+    <use href="#ngx" x="1170" y="258"/><text class="mini" x="1202" y="350" text-anchor="middle">nginx</text>
+    <use href="#ph" x="1280" y="250"/><text class="t" x="1306" y="296" text-anchor="middle" fill="#1565d8">F</text><text class="mini" x="1306" y="360" text-anchor="middle">FastAPI</text>
+    <use href="#db" x="1420" y="255"/><text class="mini" x="1450" y="360" text-anchor="middle">Redis (кэш)</text>
+    <text class="cap" x="1170" y="396">публичное API · клиент / юзеры</text>
+  </g>
+  <!-- P4 Auth -->
+  <g>
+    <rect x="40" y="460" width="500" height="270" rx="6" fill="#fff" stroke="#111" stroke-width="3"/>
+    <rect x="58" y="476" width="86" height="34" fill="#111"/><text class="tab" x="68" y="500">Auth</text>
+    <text class="num" x="516" y="526" text-anchor="end" fill="#1565d8">4</text>
+    <use href="#ph" x="110" y="560"/><text class="t" x="136" y="606" text-anchor="middle" fill="#1565d8">F</text><text class="mini" x="136" y="670" text-anchor="middle">Flask</text>
+    <use href="#db" x="250" y="565"/><text class="mini" x="280" y="670" text-anchor="middle">PostgreSQL</text>
+    <use href="#db" x="370" y="565"/><text class="mini" x="400" y="670" text-anchor="middle">Redis</text>
+    <text class="cap" x="120" y="706">JWT · RBAC · профиль (gender/age/country)</text>
+  </g>
+  <!-- P5 UGC -->
+  <g>
+    <rect x="585" y="460" width="500" height="270" rx="6" fill="#fff" stroke="#111" stroke-width="3"/>
+    <rect x="603" y="476" width="270" height="34" fill="#111"/><text class="tab" x="613" y="500">UGC — события</text>
+    <text class="num" x="1061" y="526" text-anchor="end" fill="#1565d8">5</text>
+    <use href="#ph" x="650" y="560"/><text class="t" x="676" y="606" text-anchor="middle" fill="#1565d8">A</text><text class="mini" x="676" y="670" text-anchor="middle">activity-tracker</text>
+    <path d="M716,600 H792" stroke="#1565d8" stroke-width="3" marker-end="url(#mB)"/>
+    <use href="#q" x="806" y="578"/><text class="mini" x="836" y="670" text-anchor="middle">Kafka</text>
+    <text class="cap" x="650" y="700">view/click/custom · публичный GET /ugc/email/click</text>
+  </g>
+  <!-- P6 Notification -->
+  <g>
+    <rect x="1130" y="460" width="500" height="270" rx="6" fill="#fff" stroke="#111" stroke-width="3"/>
+    <rect x="1148" y="476" width="152" height="34" fill="#111"/><text class="tab" x="1158" y="500">Notification</text>
+    <text class="num" x="1606" y="526" text-anchor="end" fill="#1565d8">6</text>
+    <use href="#ph" x="1170" y="560"/><text class="t" x="1196" y="606" text-anchor="middle" fill="#1565d8">A</text><text class="mini" x="1196" y="670" text-anchor="middle">senders</text>
+    <use href="#q" x="1290" y="578"/><text class="mini" x="1320" y="670" text-anchor="middle">RabbitMQ</text>
+    <use href="#db" x="1430" y="565"/><text class="mini" x="1460" y="670" text-anchor="middle">Postgres+Redis</text>
+    <text class="cap" x="1170" y="706">Outbox → RabbitMQ → email / WebSocket</text>
+  </g>
+
+  <!-- ===================== DIPLOMA BAND ===================== -->
+  <rect x="40" y="780" width="1600" height="440" rx="10" fill="#fff8ec" stroke="#f5a623" stroke-width="4"/>
+  <rect x="58" y="796" width="640" height="40" fill="#f5a623"/><text class="tabd" x="70" y="824">Дипломная часть · alerting-service (движок SQL-правил)</text>
+  <text class="num" x="1612" y="856" text-anchor="end" fill="#f5a623">7</text>
+
+  <!-- ФАКТЫ: Kafka (блок 5) -> StarRocks, Routine Load -->
+  <path d="M835,730 V850 H600 V880" fill="none" stroke="#1565d8" stroke-width="3.5" marker-end="url(#mB)"/>
+  <rect x="612" y="832" width="300" height="20" fill="#fff8ec"/><text class="lblb" x="620" y="847">факты · Routine Load (Kafka, блок 5)</text>
+
+  <!-- Аналитическое хранилище (StarRocks) -->
+  <g>
+    <rect x="430" y="880" width="340" height="150" rx="14" fill="#fff" stroke="#f5a623" stroke-width="3"/>
+    <text class="t" x="600" y="916" text-anchor="middle" fill="#c97a00">Аналитическое хранилище</text>
+    <text class="t" x="600" y="938" text-anchor="middle" fill="#c97a00">(StarRocks)</text>
+    <text class="s" x="600" y="966" text-anchor="middle">факты: user_events</text>
+    <text class="s" x="600" y="988" text-anchor="middle">справочники: dim_*</text>
+    <text class="s" x="600" y="1010" text-anchor="middle">витрины: mv_*</text>
+  </g>
+
+  <!-- alerting-engine -->
+  <g>
+    <rect x="870" y="880" width="300" height="150" rx="14" fill="#fff" stroke="#f5a623" stroke-width="3"/>
+    <text class="t" x="1020" y="918" text-anchor="middle" fill="#c97a00">alerting-engine</text>
+    <text class="s" x="1020" y="946" text-anchor="middle">APScheduler · SQL-правила</text>
+    <text class="s" x="1020" y="968" text-anchor="middle">лимиты · история · dry-run</text>
+    <text class="s" x="1020" y="990" text-anchor="middle">восстановление после сбоя</text>
+  </g>
+
+  <!-- Superset -->
+  <g>
+    <rect x="100" y="880" width="280" height="150" rx="14" fill="#fff" stroke="#f5a623" stroke-width="3"/>
+    <text class="t" x="240" y="940" text-anchor="middle" fill="#c97a00">Apache Superset</text>
+    <text class="s" x="240" y="968" text-anchor="middle">BI-дашборды</text>
+    <text class="s" x="240" y="990" text-anchor="middle">поверх витрин mv_*</text>
+  </g>
+
+  <!-- StarRocks -> alerting (SELECT, read-only) -->
+  <path d="M770,955 H870" stroke="#f5a623" stroke-width="3.5" marker-end="url(#mA)"/>
+  <text class="lbla" x="820" y="948" text-anchor="middle">SELECT</text>
+  <text class="mini" x="820" y="978" text-anchor="middle" fill="#c97a00">только чтение</text>
+
+  <!-- StarRocks -> Superset -->
+  <path d="M430,955 H380" stroke="#f5a623" stroke-width="3.5" marker-end="url(#mA)"/>
+  <text class="lbla" x="405" y="945" text-anchor="middle">mv_*</text>
+
+  <!-- alerting -> notifications (блок 6) -->
+  <path d="M1020,880 V800 H1380 V730" fill="none" stroke="#f5a623" stroke-width="3.5" marker-end="url(#mA)"/>
+  <rect x="1075" y="782" width="300" height="20" fill="#fff8ec"/><text class="lbla" x="1083" y="797">задача → notifications (блок 6)</text>
+
+  <!-- PostgreSQL — общая БД + SQL-интерфейс + источник справочников -->
+  <g>
+    <rect x="430" y="1090" width="740" height="100" rx="14" fill="#fff" stroke="#f5a623" stroke-width="3"/>
+    <use href="#db" x="452" y="1106"/>
+    <text class="t" x="540" y="1124" fill="#c97a00">PostgreSQL — общая БД (Admin · Auth · Notifications · Alerting)</text>
+    <text class="s" x="540" y="1150">SQL-интерфейс alerting: функции adm_* (через DBeaver)</text>
+    <text class="s" x="540" y="1172">хранит правила и историю отправок</text>
+  </g>
+
+  <!-- Аналитик / DBeaver -->
+  <g>
+    <rect x="100" y="1090" width="280" height="100" rx="14" fill="#fff" stroke="#9aa3b0" stroke-width="2.5"/>
+    <text class="t" x="240" y="1124" text-anchor="middle">Аналитик · DBeaver</text>
+    <text class="s" x="240" y="1150" text-anchor="middle">пишет SQL-правило:</text>
+    <text class="s" x="240" y="1172" text-anchor="middle">SELECT adm_create_rule(...)</text>
+  </g>
+
+  <!-- Аналитик -> PostgreSQL (SQL-интерфейс) -->
+  <path d="M380,1140 H430" stroke="#1565d8" stroke-width="3.5" marker-end="url(#mB)"/>
+  <text class="lblb" x="405" y="1130" text-anchor="middle">SQL</text>
+
+  <!-- PostgreSQL -> StarRocks (справочники: JDBC + SUBMIT TASK) -->
+  <path d="M600,1090 V1030" stroke="#f5a623" stroke-width="3.5" marker-end="url(#mA)"/>
+  <rect x="612" y="1038" width="316" height="38" fill="#fff8ec"/>
+  <text class="lbla" x="618" y="1053">справочники dim_*</text>
+  <text class="lbla" x="618" y="1071">JDBC Catalog + SUBMIT TASK</text>
+
+  <!-- PostgreSQL <-> alerting (правила / история) -->
+  <path d="M1020,1090 V1030" stroke="#f5a623" stroke-width="3.5" marker-end="url(#mA)" marker-start="url(#mA)"/>
+  <rect x="1035" y="1048" width="150" height="20" fill="#fff8ec"/><text class="lbla" x="1041" y="1063">правила · история</text>
+</svg>
+</div>
+</body>
+</html>

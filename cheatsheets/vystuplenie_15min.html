@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Защита диплома — шпаргалка (15 мин)</title>
+<style>
+  :root{
+    --ink:#1a1a1a; --muted:#555; --accent:#1565d8; --amber:#b9770e;
+    --rule:#d9d9d9; --code-bg:#f0f3f8;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:"PT Sans","Segoe UI",Arial,sans-serif;
+    color:var(--ink); font-size:10.3pt; line-height:1.34;
+    background:#fff;
+  }
+  .page{max-width:190mm;margin:0 auto;padding:8mm 8mm 4mm;}
+  h1{
+    font-size:15pt;margin:0 0 1mm;letter-spacing:.2px;
+    border-bottom:2.5px solid var(--accent);padding-bottom:2mm;
+  }
+  h1 .sub{font-size:9pt;color:var(--muted);font-weight:normal;float:right;margin-top:4px;}
+  section{margin:0 0 2.6mm;break-inside:avoid;}
+  h2{
+    font-size:10.6pt;margin:0 0 1mm;color:#fff;background:var(--accent);
+    display:inline-block;padding:1px 8px;border-radius:3px;
+  }
+  h2.amber{background:var(--amber);}
+  p{margin:0 0 1.4mm;text-align:justify;}
+  p + p{margin-top:0;}
+  code{
+    font-family:"Consolas","Courier New",monospace;font-size:9.2pt;
+    background:var(--code-bg);padding:0 3px;border-radius:2px;color:#0a3d91;
+  }
+  b,strong{color:#000;}
+  .lead{color:var(--muted);font-style:italic;}
+  .qa{
+    margin-top:3mm;border-top:1.5px dashed var(--rule);padding-top:2mm;
+    font-size:9.4pt;line-height:1.28;
+  }
+  .qa h3{font-size:10pt;margin:0 0 1.5mm;color:var(--amber);}
+  .qa .row{margin:0 0 1.2mm;}
+  .qa .q{font-weight:bold;color:#000;}
+  .nums{
+    margin-top:2.5mm;background:#f7f9fc;border:1px solid var(--rule);
+    border-radius:4px;padding:2mm 3mm;font-size:9.3pt;
+  }
+  .nums b{color:var(--accent);}
+  @page{ size:A4; margin:0; }
+  @media print{
+    body{font-size:10.1pt;}
+    .page{padding:7mm 9mm;}
+    .no-print{display:none;}
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <h1>Защита диплома · alerting-service <span class="sub">~15 мин · Павел Савельичев</span></h1>
+
+  <section>
+    <h2>0:00–1:30 · Вступление и проблема</h2>
+    <p>Тема моей дипломной работы — автоматизированный сервис уведомлений на основе событий <code>alerting-service</code>.</p>
+    <p>Коротко о контексте.У нас есть — платформа онлайн-кинотеатра из набора микросервисов. К началу работы на ней было два независимых конвейера. Первый — <b>сбор поведения</b>: события идут из <code>activity-tracker</code> через Kafka в аналитическое хранилище StarRocks. Второй — <b>доставка уведомлений</b>: <code>notifications-service</code> отправляет письма и сообщения в веб-сокет.</p>
+    <p>Проблема — между конвейерами не хватало связующего звена, превращающего <b>«данные» в «действие»</b>. Чтобы запустить рассылку по поведению, маркетолог-оператора должен был запускать вручную каждую рассылку.</p>
+  </section>
+
+  <section>
+    <h2>1:30–4:00 · Суть сервиса</h2>
+    <p>Если одной фразой — это <b>движок SQL-правил поверх аналитического хранилища</b>.</p>
+    <p>Аналитик описывает аудиторию обычным SQL-запросом: пишет <code>SELECT</code>, который возвращает идентификаторы пользователей и контекст для персонализации письма. Регистрирует его как правило одной функцией — <code>adm_create_rule</code>. У правила есть расписание, шаблон письма и лимит частоты.</p>
+    <p>Дальше всё автоматически. По расписанию движок делает четыре вещи: <b>(1)</b> выполняет SQL в StarRocks и получает список пользователей; <b>(2)</b> отсекает попавших под лимит, чтобы не заспамить; <b>(3)</b> записывает историю отправок; <b>(4)</b> одной транзакцией создаёт задачу на рассылку в <code>notifications-service</code>.</p>
+    <p>Сценарии использования: автоматизация типовых сценариев — возврат неактивного пользователя (win-back); промо при росте интереса в сегменте; рекомендация альтернативы бросившим новинку.</p>
+    <p>Аналоги — Mindbox, Customer.io, Braze. Моё отличие — <b>целевой пользователь</b>. Они делают для маркетолога без SQL и строят сложные визуальные конструкторы. Я делаю инструмент для аналитика, который SQL знает — интерфейс проще, гибкость выше: любая выборка — один <code>SELECT</code>.</p>
+  </section>
+
+  <section>
+    <h2>4:00–6:00 · Стек технологий</h2>
+    <p>Главный принцип — <b>переиспользовать то, что в платформе уже есть</b>, и не плодить сервисы. Сервис получился тонким.</p>
+    <p>Движок — Python 3.12 + планировщик APScheduler. Распределённую очередь (Celery) сознательно не брал: планировщик в том же процессе достаточен, а распределённая очередь уже есть в <code>notifications-service</code>.</p>
+    <p>Аналитическое хранилище — StarRocks, он уже был в проекте как OLAP. Удобен: говорит по протоколу MySQL, поддерживает асинхронные материализованные представления, сам подгружает события из Kafka механизмом Routine Load.</p>
+    <p>Справочники (фильмы, пользователи, жанры) синхронизирую из Postgres в StarRocks нативно — внешним JDBC-каталогом и задачей <code>SUBMIT TASK</code> по расписанию. Отдельный Python-ETL здесь избыточен: несколько таблиц с полной перезаливкой раз в час.</p>
+    <p>Правила и историю храню в PostgreSQL — в той же базе, где <code>notifications</code>. Это принципиально: благодаря общей базе критичный шаг укладывается в одну транзакцию.</p>
+    <p>Для дашбордов — Apache Superset: open-source, готовый коннектор к StarRocks, на аналитических объёмах лучше Metabase.</p>
+  </section>
+
+  <section>
+    <h2>6:00–8:00 · Почему SQL-интерфейс, а не REST</h2>
+    <p>Главное архитектурное решение — интерфейс управления это SQL-функции, а не REST-API.</p>
+    <p><b>Пользователь.</b> Целевой пользователь — аналитик, который весь день в DBeaver. Вызвать <code>SELECT adm_create_rule(...)</code> ему естественнее, чем формировать HTTP-запрос через <code>curl</code>.</p>
+    <p><b>Меньше слоёв и кода.</b> Не нужно поднимать HTTP-API и отдельный веб-интерфейс. Всё управление — набор SQL-функций в схеме <code>alerting</code>.</p>
+    <p><b>Ещё причина - Гибкость.</b> Любое условие выборки — один <code>SELECT</code> поверх витрин. Не нужен визуальный конструктор, который всегда чего-то не умеет.</p>
+    <p>От REST не отказываюсь совсем — вынес его в «возможные улучшения». Понадобится — это тонкая обёртка над теми же функциями, без дублирования логики.</p>
+  </section>
+
+  <section>
+    <h2 class="amber">8:00–14:00 · Демонстрация</h2>
+    <p class="lead">Покажу всё вживую. → Контур: событие → StarRocks → SQL-правило → письмо → клик → событие обратно → воронка отклика.</p>
+    <p><b>1.</b> Демо-данные: <code>seed-users</code> + <code>trigger-events winback</code> → поток <code>view</code> в Kafka → <code>user_events</code> (Routine Load). <b>2.</b> Обновить витрины: <code>REFRESH MATERIALIZED VIEW mv_user_activity / mv_user_top_genres</code>.</p>
+    <p><b>3.</b> Правило (movies-pg): <code>alerting.adm_create_rule(...)</code> + <code>adm_enable_rule</code>. Показать валидацию — осмысленная ошибка на <code>DELETE FROM</code>. <b>4.</b> Dry-run: <code>adm_dry_run_rule</code> → <code>v_runs</code>: matched 20, dispatched 0 (писем нет).</p>
+    <p><b>5.</b> Боевой запуск: <code>adm_trigger_rule</code> → 20 писем в Mailpit, у каждого свой top-3 жанров (per-user context). <b>6.</b> Лимит: повторный <code>adm_trigger_rule</code> → after_cap 0, новых писем нет (<code>per_rule_per_user_days=30</code>).</p>
+    <p><b>7. Замыкание петли.</b> В письме ссылка <code>GET /ugc/email/click</code> → событие <code>recommendation</code> в Kafka → <code>user_events</code>. Журнал копируется в <code>dispatch_log</code> (каждые 30с), <code>mv_rule_conversion</code> по таймеру (10с). В Superset — Funnel «отправлено → перешли по ссылке». Открыть пару писем, нажать ссылку → через ~10–20с воронка наполняется сама. Повторный клик дубля не создаёт (<code>request_id = uuid5(rule, run, user)</code>).</p>
+  </section>
+
+  <section>
+    <h2>14:00–15:00 · Итоги</h2>
+    <p>В платформу добавилось недостающее звено <b>«данные → действие»</b>: аналитик одним SQL-правилом запускает поведенческую рассылку.</p>
+    <p>И контур не просто работает, а <b>измерим</b>: весь путь от события пользователя до отклика на письмо виден в одной воронке.</p>
+    <p>На этом всё. Спасибо за внимание — готов ответить на вопросы.</p>
+  </section>
+
+  <div class="qa">
+    <h3>🛟 Если спросят</h3>
+    <div class="row"><span class="q">Почему не Celery?</span> Распределённая очередь уже есть в notifications; APScheduler в том же процессе достаточен — не дублирую инфраструктуру.</div>
+    <div class="row"><span class="q">Почему не отдельный ETL для справочников?</span> JDBC Catalog + SUBMIT TASK — нативный механизм StarRocks, та же «оркестрация внутри хранилища», что и Routine Load. Python-воркер оправдан при CDC/сложных преобразованиях — здесь избыточен.</div>
+    <div class="row"><span class="q">Идемпотентность / сбои?</span> Цепочка «выборка → лимит → история → задача» в одной транзакции; ключ задачи <code>alerting:{rule_id}:{run_id}</code> детерминирован — повтор после сбоя дублей не даёт. Прерванные запуски восстанавливаются.</div>
+    <div class="row"><span class="q">Безопасность SQL-правил?</span> Движок читает StarRocks под ролью <code>alert_reader</code> (только чтение); некорректный SQL отклоняется с осмысленной ошибкой.</div>
+    <div class="row"><span class="q">Не опасно ли давать аналитику SQL?</span> Read-only роль + валидация + правило проходит dry-run перед боевым запуском.</div>
+  </div>
+
+  <div class="nums">
+    🔢 <b>Цифры под рукой:</b> Python <b>3.12</b> · StarRocks (MySQL-протокол, порт <b>9030</b>) · Postgres <b>5438</b>, БД <code>movies</code> · Mailpit <b>:8025</b> · Superset <b>:8088</b> · Kafka UI <b>:8081</b> · win-back: matched <b>20</b>, лимит <b>30</b> дней · витрины <b>6</b> (mv_*) · справочники из Postgres раз в <b>1 час</b>.
+  </div>
+
+</div>
+</body>
+</html>
